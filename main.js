@@ -1,8 +1,8 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -288,34 +288,22 @@ ipcMain.handle('play-episode', async (event, filePath) => {
   if (mediaPlayer === 'kmplayer') {
     const kmpPath = getKMPlayerPath();
     if (kmpPath) {
-      // Found absolute path, run it directly
-      const command = `"${kmpPath}" "${filePath}"`;
-      exec(command, (err) => {
+      execFile(kmpPath, [filePath], (err) => {
         if (err) {
           console.error('Failed to open file with KMPlayer path, falling back to system default:', err);
-          exec(`start "" "${filePath}"`);
+          shell.openPath(filePath);
         }
       });
     } else {
-      // Try running "kmplayer" from PATH, fallback to default if command fails
-      exec(`kmplayer "${filePath}"`, (err) => {
+      execFile('kmplayer', [filePath], (err) => {
         if (err) {
           console.error('KMPlayer command not found in PATH, falling back to system default:', err);
-          exec(`start "" "${filePath}"`);
+          shell.openPath(filePath);
         }
       });
     }
   } else {
-    // Default system player
-    // On Windows, start "" "path" opens with default app
-    // Using shell start, double quoting everything, but CMD start needs a title argument first
-    const command = `start "" "${filePath}"`;
-    exec(command, (err) => {
-      if (err) {
-        console.error('Failed to open file:', err);
-        throw err;
-      }
-    });
+    await shell.openPath(filePath);
   }
 
   return true;

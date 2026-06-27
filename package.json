@@ -17,14 +17,14 @@
     "media",
     "electron"
   ],
-  "author": "Antigravity",
+  "author": "Dinuwa",
   "license": "ISC",
   "devDependencies": {
     "electron": "^31.0.0",
     "electron-builder": "^24.13.3"
   },
   "build": {
-    "appId": "com.antigravity.cinetrackpro",
+    "appId": "com.Dinuwa.cinetrackpro",
     "productName": "CineTrack Pro",
     "directories": {
       "output": "dist"
