@@ -6,4 +6,5 @@ if (!fs.existsSync(assetsDir)) {
   fs.mkdirSync(assetsDir, { recursive: true });
 }
 
+console.log('Assets directory verified successfully.');
 console.log('Assets directory structure verified.');
