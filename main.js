@@ -288,6 +288,7 @@ ipcMain.handle('play-episode', async (event, filePath) => {
   if (mediaPlayer === 'kmplayer') {
     const kmpPath = getKMPlayerPath();
     if (kmpPath) {
+      // Secure execution without shell parameter interpolation
       execFile(kmpPath, [filePath], (err) => {
         if (err) {
           console.error('Failed to open file with KMPlayer path, falling back to system default:', err);
@@ -303,6 +304,7 @@ ipcMain.handle('play-episode', async (event, filePath) => {
       });
     }
   } else {
+    // Native secure Electron API for opening files in system default player
     await shell.openPath(filePath);
   }
 

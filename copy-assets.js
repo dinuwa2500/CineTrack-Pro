@@ -7,3 +7,4 @@ if (!fs.existsSync(assetsDir)) {
 }
 
 console.log('Assets directory verified successfully.');
+console.log('Assets directory structure verified.');
