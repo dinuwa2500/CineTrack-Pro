@@ -1,0 +1,471 @@
+import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+import { exec } from 'child_process';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+let mainWindow = null;
+const CONFIG_FILE = path.join(app.getPath('userData'), 'movie-marker-config.json');
+
+// Helper to read app configuration (like history)
+function readConfig() {
+  try {
+    if (fs.existsSync(CONFIG_FILE)) {
+      const data = fs.readFileSync(CONFIG_FILE, 'utf-8');
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.error('Error reading configuration:', error);
+  }
+  return { history: [], defaultMode: 'db', customTag: ' [Finished]' };
+}
+
+// Helper to write app configuration
+function writeConfig(config) {
+  try {
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf-8');
+  } catch (error) {
+    console.error('Error writing configuration:', error);
+  }
+}
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    title: 'CineTrack Pro',
+    icon: path.join(__dirname, 'assets', 'icon.png'),
+    width: 1100,
+    height: 800,
+    minWidth: 800,
+    minHeight: 600,
+    frame: true,
+    titleBarStyle: 'default',
+    backgroundColor: '#0f172a', // Tailwind slate-900 color for smooth load
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  mainWindow.loadFile('index.html');
+  // mainWindow.webContents.openDevTools(); // Uncomment for debugging
+}
+
+app.whenReady().then(() => {
+  createWindow();
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+// IPC: Select Folder
+ipcMain.handle('select-folder', async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'],
+  });
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+  return result.filePaths[0];
+});
+
+// IPC: Get history and settings
+ipcMain.handle('get-app-config', async () => {
+  return readConfig();
+});
+
+// IPC: Save settings
+ipcMain.handle('save-app-config', async (event, newConfig) => {
+  const current = readConfig();
+  const updated = { ...current, ...newConfig };
+  writeConfig(updated);
+  return updated;
+});
+
+// Video extensions to look for
+const VIDEO_EXTENSIONS = new Set([
+  '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.m4v', '.flv', '.webm', 
+  '.ts', '.m2ts', '.vob', '.mpg', '.mpeg', '.ogv', '.3gp', '.divx', 
+  '.rm', '.rmvb', '.asf', '.m2v', '.iso', '.f4v', '.h264', '.hevc'
+]);
+
+// Parse season and episode from filename
+function parseEpisodeDetails(filename) {
+  const cleanName = path.parse(filename).name;
+
+  // Regex patterns
+  // Pattern 1: S01E02 or s01e02 or S1E2
+  const s00e00 = /s(\d+)\s*e(\d+)/i.exec(cleanName);
+  if (s00e00) {
+    return { season: parseInt(s00e00[1], 10), episode: parseInt(s00e00[2], 10) };
+  }
+
+  // Pattern 2: 1x02 or 01x02
+  const xPattern = /(\d+)\s*x\s*(\d+)/i.exec(cleanName);
+  if (xPattern) {
+    return { season: parseInt(xPattern[1], 10), episode: parseInt(xPattern[2], 10) };
+  }
+
+  // Pattern 3: Episode 2 or Ep 2 (assume season 1)
+  const epPattern = /(?:ep|episode)\.?\s*(\d+)/i.exec(cleanName);
+  if (epPattern) {
+    return { season: 1, episode: parseInt(epPattern[1], 10) };
+  }
+
+  // Pattern 4: Season 2 Episode 3 or Season 2 - 03
+  const seasonEpPattern = /season\s*(\d+)\s*[-_]?\s*(?:ep|episode)?\s*(\d+)/i.exec(cleanName);
+  if (seasonEpPattern) {
+    return { season: parseInt(seasonEpPattern[1], 10), episode: parseInt(seasonEpPattern[2], 10) };
+  }
+
+  // Pattern 5: Standalone number at the end or middle, e.g. "Show - 05" or "Show 102"
+  // Let's look for numbers with leading zeros first, or numbers separated by space/dash
+  const standalonePattern = /[\s\-_](\d{2,3})(?:\s|[-_.]|$)/.exec(cleanName);
+  if (standalonePattern) {
+    return { season: 1, episode: parseInt(standalonePattern[1], 10) };
+  }
+
+  // Default fallback if we can't extract numbers
+  return { season: 1, episode: null };
+}
+
+// IPC: Scan directory recursively or flat
+ipcMain.handle('scan-folder', async (event, folderPath) => {
+  if (!fs.existsSync(folderPath)) {
+    throw new Error('Directory does not exist');
+  }
+
+  const episodes = [];
+  
+  // Read Database config if it exists inside scanned folder
+  const dbPath = path.join(folderPath, '.episode-tracker.json');
+  let dbData = {};
+  if (fs.existsSync(dbPath)) {
+    try {
+      dbData = JSON.parse(fs.readFileSync(dbPath, 'utf-8'));
+    } catch (e) {
+      console.error('Failed to parse tracker JSON, using empty DB state', e);
+    }
+  }
+
+  // Retrieve global config to check watch tags
+  const globalConfig = readConfig();
+  const watchTag = globalConfig.customTag || ' [Finished]';
+
+  // Recursive scan function
+  function scan(dir) {
+    let files;
+    try {
+      files = fs.readdirSync(dir);
+    } catch (err) {
+      console.warn(`Skipping directory due to read error: ${dir}`, err.message);
+      return; // Skip directories we cannot read
+    }
+
+    for (const file of files) {
+      const fullPath = path.join(dir, file);
+      
+      // Skip hidden files/directories (like .git, .episode-tracker.json, etc.)
+      if (file.startsWith('.')) continue;
+
+      let stat;
+      try {
+        stat = fs.statSync(fullPath);
+      } catch (err) {
+        console.warn(`Skipping path due to stat error: ${fullPath}`, err.message);
+        continue; // Skip files we cannot stat
+      }
+
+      if (stat.isDirectory()) {
+        scan(fullPath);
+      } else {
+        const ext = path.extname(file).toLowerCase();
+        if (VIDEO_EXTENSIONS.has(ext)) {
+          // Keep all files except empty 0-byte files
+          if (stat.size <= 0) continue;
+
+          const relativePath = path.relative(folderPath, fullPath);
+          const nameWithoutExt = path.parse(file).name;
+          
+          // Determine if watched based on filename tag
+          const hasTag = nameWithoutExt.endsWith(watchTag);
+          
+          // Clean filename by removing the tag for display
+          let displayName = file;
+          if (hasTag) {
+            const index = nameWithoutExt.lastIndexOf(watchTag);
+            displayName = nameWithoutExt.substring(0, index) + ext;
+          }
+
+          const parsed = parseEpisodeDetails(displayName);
+
+          // Check watch status from DB or file tag
+          const isWatchedInDb = !!dbData[relativePath] || !!dbData[file];
+          const watched = hasTag || isWatchedInDb;
+
+          // Format size nicely (support MB for smaller files)
+          let sizeFormatted = '';
+          if (stat.size > 1024 * 1024 * 1024) {
+            sizeFormatted = (stat.size / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+          } else {
+            sizeFormatted = (stat.size / (1024 * 1024)).toFixed(1) + ' MB';
+          }
+
+          episodes.push({
+            name: file,
+            displayName: displayName,
+            relativePath: relativePath,
+            fullPath: fullPath,
+            sizeBytes: stat.size,
+            sizeFormatted: sizeFormatted,
+            season: parsed.season,
+            episode: parsed.episode,
+            watched: watched,
+            originalHasTag: hasTag
+          });
+        }
+      }
+    }
+  }
+
+  try {
+    scan(folderPath);
+  } catch (error) {
+    console.error('Error scanning folder:', error);
+    throw error;
+  }
+
+  // Update folder history in global config
+  const config = readConfig();
+  let history = config.history || [];
+  history = history.filter(p => p !== folderPath);
+  history.unshift(folderPath);
+  if (history.length > 10) history = history.slice(0, 10);
+  writeConfig({ ...config, history });
+
+  return { episodes, dbMode: globalConfig.defaultMode || 'db', watchTag };
+});
+
+// Helper to find KMPlayer installation path on Windows
+function getKMPlayerPath() {
+  const paths = [
+    'C:\\Program Files\\KMPlayer\\KMPlayer.exe',
+    'C:\\Program Files (x86)\\KMPlayer\\KMPlayer.exe',
+    'C:\\Program Files\\KMPlayer 64X\\KMPlayer64.exe',
+    'C:\\Program Files (x86)\\KMPlayer 64X\\KMPlayer64.exe',
+    path.join(process.env.LOCALAPPDATA || '', 'KMPlayer\\KMPlayer.exe')
+  ];
+  for (const p of paths) {
+    if (fs.existsSync(p)) {
+      return p;
+    }
+  }
+  return null;
+}
+
+// IPC: Play Episode
+ipcMain.handle('play-episode', async (event, filePath) => {
+  if (!fs.existsSync(filePath)) {
+    throw new Error('File does not exist');
+  }
+
+  const config = readConfig();
+  const mediaPlayer = config.mediaPlayer || 'default';
+
+  if (mediaPlayer === 'kmplayer') {
+    const kmpPath = getKMPlayerPath();
+    if (kmpPath) {
+      // Found absolute path, run it directly
+      const command = `"${kmpPath}" "${filePath}"`;
+      exec(command, (err) => {
+        if (err) {
+          console.error('Failed to open file with KMPlayer path, falling back to system default:', err);
+          exec(`start "" "${filePath}"`);
+        }
+      });
+    } else {
+      // Try running "kmplayer" from PATH, fallback to default if command fails
+      exec(`kmplayer "${filePath}"`, (err) => {
+        if (err) {
+          console.error('KMPlayer command not found in PATH, falling back to system default:', err);
+          exec(`start "" "${filePath}"`);
+        }
+      });
+    }
+  } else {
+    // Default system player
+    // On Windows, start "" "path" opens with default app
+    // Using shell start, double quoting everything, but CMD start needs a title argument first
+    const command = `start "" "${filePath}"`;
+    exec(command, (err) => {
+      if (err) {
+        console.error('Failed to open file:', err);
+        throw err;
+      }
+    });
+  }
+
+  return true;
+});
+
+// IPC: Toggle Watched
+ipcMain.handle('toggle-watched', async (event, { folderPath, episode, mode, watchTag }) => {
+  const { fullPath, relativePath, name, watched } = episode;
+  const ext = path.extname(name);
+  const nameWithoutExt = path.parse(name).name;
+  
+  if (!fs.existsSync(fullPath)) {
+    throw new Error('File does not exist on disk');
+  }
+
+  let finalWatched = !watched;
+  let newFullPath = fullPath;
+  let newName = name;
+  let newRelativePath = relativePath;
+
+  if (mode === 'rename') {
+    // Filesystem renaming mode
+    const parentDir = path.dirname(fullPath);
+    if (finalWatched) {
+      // Add tag
+      if (!nameWithoutExt.endsWith(watchTag)) {
+        newName = nameWithoutExt + watchTag + ext;
+      }
+    } else {
+      // Remove tag
+      if (nameWithoutExt.endsWith(watchTag)) {
+        newName = nameWithoutExt.slice(0, -watchTag.length) + ext;
+      }
+    }
+
+    newFullPath = path.join(parentDir, newName);
+    newRelativePath = path.relative(folderPath, newFullPath);
+
+    if (fullPath !== newFullPath) {
+      fs.renameSync(fullPath, newFullPath);
+    }
+  }
+
+  // Database mode (save or update in local .episode-tracker.json)
+  const dbPath = path.join(folderPath, '.episode-tracker.json');
+  let dbData = {};
+  if (fs.existsSync(dbPath)) {
+    try {
+      dbData = JSON.parse(fs.readFileSync(dbPath, 'utf-8'));
+    } catch (e) {
+      console.error('Error reading db', e);
+    }
+  }
+
+  // If we are in rename mode, we also clean up or store in db for reference,
+  // but in DB mode, relativePath is our key.
+  if (mode === 'db') {
+    if (finalWatched) {
+      dbData[relativePath] = true;
+    } else {
+      delete dbData[relativePath];
+    }
+  } else {
+    // In rename mode, clear the old keys in DB to avoid stale db data
+    delete dbData[relativePath];
+    delete dbData[newRelativePath];
+  }
+
+  fs.writeFileSync(dbPath, JSON.stringify(dbData, null, 2), 'utf-8');
+
+  return {
+    success: true,
+    watched: finalWatched,
+    name: newName,
+    fullPath: newFullPath,
+    relativePath: newRelativePath
+  };
+});
+
+// IPC: Bulk Watched
+ipcMain.handle('bulk-toggle-watched', async (event, { folderPath, episodes, watch, mode, watchTag }) => {
+  const dbPath = path.join(folderPath, '.episode-tracker.json');
+  let dbData = {};
+  if (fs.existsSync(dbPath)) {
+    try {
+      dbData = JSON.parse(fs.readFileSync(dbPath, 'utf-8'));
+    } catch (e) {
+      console.error('Error reading db in bulk', e);
+    }
+  }
+
+  const results = [];
+
+  for (const ep of episodes) {
+    try {
+      const { fullPath, relativePath, name } = ep;
+      const ext = path.extname(name);
+      const nameWithoutExt = path.parse(name).name;
+
+      if (!fs.existsSync(fullPath)) continue;
+
+      let newFullPath = fullPath;
+      let newName = name;
+      let newRelativePath = relativePath;
+
+      if (mode === 'rename') {
+        const parentDir = path.dirname(fullPath);
+        if (watch) {
+          if (!nameWithoutExt.endsWith(watchTag)) {
+            newName = nameWithoutExt + watchTag + ext;
+          }
+        } else {
+          if (nameWithoutExt.endsWith(watchTag)) {
+            newName = nameWithoutExt.slice(0, -watchTag.length) + ext;
+          }
+        }
+
+        newFullPath = path.join(parentDir, newName);
+        newRelativePath = path.relative(folderPath, newFullPath);
+
+        if (fullPath !== newFullPath) {
+          fs.renameSync(fullPath, newFullPath);
+        }
+      }
+
+      // Sync database file
+      if (mode === 'db') {
+        if (watch) {
+          dbData[relativePath] = true;
+        } else {
+          delete dbData[relativePath];
+        }
+      } else {
+        delete dbData[relativePath];
+        delete dbData[newRelativePath];
+      }
+
+      results.push({
+        originalFullPath: fullPath,
+        name: newName,
+        fullPath: newFullPath,
+        relativePath: newRelativePath,
+        watched: watch
+      });
+    } catch (err) {
+      console.error('Failed to update file in bulk:', ep.name, err);
+    }
+  }
+
+  fs.writeFileSync(dbPath, JSON.stringify(dbData, null, 2), 'utf-8');
+
+  return results;
+});

@@ -1,0 +1,46 @@
+{
+  "name": "cinetrack-pro",
+  "version": "1.0.0",
+  "description": "CineTrack Pro — Professional TV Series Progress Manager & Media Suite",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "start": "electron .",
+    "dist": "npx electron-builder"
+  },
+  "keywords": [
+    "cinetrack",
+    "tv",
+    "series",
+    "tracker",
+    "progress",
+    "media",
+    "electron"
+  ],
+  "author": "Antigravity",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.antigravity.cinetrackpro",
+    "productName": "CineTrack Pro",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "icon": "assets/icon.png",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CineTrack Pro - TV Series Tracker & Media Manager</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar / Navigation -->
+    <aside class="sidebar">
+      <div class="brand">
+        <img class="brand-img-icon" src="assets/icon.png" alt="CineTrack Pro Icon" width="32" height="32" style="border-radius: 8px; filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.5));">
+        <span class="brand-text">CineTrack Pro</span>
+      </div>
+
+      <nav class="nav-menu">
+        <button id="btn-dashboard" class="nav-item active">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          Dashboard
+        </button>
+        <button id="btn-settings-nav" class="nav-item">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          Settings
+        </button>
+      </nav>
+
+      <div class="recent-folders-section">
+        <h3>Recent Folders</h3>
+        <ul id="recent-folders-list" class="recent-list">
+          <li class="empty-recent">No folders scanned yet</li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Main Workspace -->
+    <main class="main-content">
+      <!-- Top Actions Bar -->
+      <header class="top-bar">
+        <div class="folder-selector-container">
+          <input type="text" id="folder-path-input" placeholder="Select a TV Series folder..." readonly>
+          <button id="btn-browse" class="btn btn-primary">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            Select Folder
+          </button>
+        </div>
+      </header>
+
+      <!-- Welcome View (when no folder is scanned) -->
+      <div id="welcome-view" class="welcome-container">
+        <div class="welcome-card">
+          <div class="welcome-icon">
+            <img src="assets/icon.png" alt="Logo" width="80" height="80" style="border-radius: 20px; filter: drop-shadow(0 8px 25px rgba(99, 102, 241, 0.4)); margin-bottom: 12px;">
+          </div>
+          <h2>Welcome to CineTrack Pro</h2>
+          <p>Scan any local TV series directory. We'll group your files by seasons, keep track of your watch progress across hundreds of episodes, and launch videos seamlessly in your preferred player.</p>
+          <button id="btn-welcome-browse" class="btn btn-primary btn-large">Select a Folder to Start</button>
+        </div>
+      </div>
+
+      <!-- Main Dashboard View -->
+      <div id="dashboard-view" class="dashboard-container hidden">
+        <!-- Stats Summary Banner -->
+        <section class="stats-banner">
+          <div class="stats-text-block">
+            <h1 id="tv-show-title" class="tv-title">TV Series Name</h1>
+            <p id="tv-show-path" class="tv-path">c:/Path/To/TV/Show</p>
+            
+            <div class="stats-counters">
+              <div class="counter-item">
+                <span class="counter-value" id="stat-total-episodes">0</span>
+                <span class="counter-label">Episodes</span>
+              </div>
+              <div class="counter-item">
+                <span class="counter-value" id="stat-watched">0</span>
+                <span class="counter-label">Watched</span>
+              </div>
+              <div class="counter-item">
+                <span class="counter-value" id="stat-unwatched">0</span>
+                <span class="counter-label">Remaining</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="stats-progress-block">
+            <div class="progress-ring-container">
+              <svg class="progress-ring" width="120" height="120">
+                <circle class="progress-ring-bg" stroke="#1e293b" stroke-width="8" fill="transparent" r="50" cx="60" cy="60"/>
+                <circle class="progress-ring-fill" stroke="var(--primary-color)" stroke-width="8" stroke-dasharray="314.15" stroke-dashoffset="314.15" stroke-linecap="round" fill="transparent" r="50" cx="60" cy="60"/>
+              </svg>
+              <div class="progress-ring-text">
+                <span id="stat-percent">0%</span>
+                <span class="progress-sub">Done</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Search, Filter & Bulk Actions Bar -->
+        <div class="filter-bar">
+          <div class="search-box">
+            <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="episode-search" placeholder="Search episode name or code (S01E02)...">
+          </div>
+
+          <div class="filter-groups">
+            <div class="tab-filters">
+              <button class="filter-tab active" data-filter="all">All</button>
+              <button class="filter-tab" data-filter="unwatched">Unwatched</button>
+              <button class="filter-tab" data-filter="watched">Watched</button>
+            </div>
+            
+            <button id="btn-refresh" class="btn btn-secondary icon-only" title="Rescan Folder">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Directory Info & Quick Actions -->
+        <div class="quick-actions-bar">
+          <span class="active-mode-badge" id="mode-badge">Mode: Database Tracker</span>
+          <div class="bulk-actions">
+            <button id="btn-mark-all-watched" class="btn btn-secondary btn-sm">Mark All Watched</button>
+            <button id="btn-clear-all-watched" class="btn btn-secondary btn-sm">Clear Progress</button>
+          </div>
+        </div>
+
+        <!-- Seasons and Episodes List -->
+        <div id="seasons-container" class="seasons-wrapper">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+
+      <!-- Settings View -->
+      <div id="settings-view" class="settings-container hidden">
+        <div class="settings-card">
+          <h2>Application Settings</h2>
+          <hr class="divider">
+          
+          <div class="settings-group">
+            <label class="settings-label">Tracking Mechanism</label>
+            <div class="radio-cards">
+              <div class="radio-card" id="card-mode-db">
+                <input type="radio" id="mode-db" name="tracking-mode" value="db" checked>
+                <div class="radio-card-content">
+                  <div class="radio-header">
+                    <span class="radio-title">Database Mode (Safe)</span>
+                    <span class="recommend-badge">Recommended</span>
+                  </div>
+                  <p>Tracks your watch progress using a small metadata file (<code>.episode-tracker.json</code>) inside the TV series folder. Original files remain untouched. Great for torrents and media centers.</p>
+                </div>
+              </div>
+
+              <div class="radio-card" id="card-mode-rename">
+                <input type="radio" id="mode-rename" name="tracking-mode" value="rename">
+                <div class="radio-card-content">
+                  <span class="radio-title">Physical Renaming Mode</span>
+                  <p>Directly renames the video files on your hard drive, appending a tag (e.g. <code>[Finished]</code>) to the end of the filename. Changes are immediately visible in Windows Explorer.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-group" id="custom-tag-group">
+            <label for="custom-tag-input" class="settings-label">Finished Filename Tag</label>
+            <div class="input-tag-wrapper">
+              <input type="text" id="custom-tag-input" value=" [Finished]" placeholder="e.g. [Finished]">
+              <span class="input-tip">This suffix is added to files when marked watched in Renaming mode. Ensure it has a leading space if desired.</span>
+            </div>
+          </div>
+
+          <hr class="divider">
+
+          <div class="settings-group">
+            <label class="settings-label">Preferred Media Player</label>
+            <div class="radio-cards">
+              <div class="radio-card" id="card-player-default">
+                <input type="radio" id="player-default" name="player-mode" value="default" checked>
+                <div class="radio-card-content">
+                  <span class="radio-title">System Default Player</span>
+                  <p>Launches video files using whatever player is currently registered as the default on Windows (e.g. VLC, MPC-HC, or Movies & TV).</p>
+                </div>
+              </div>
+
+              <div class="radio-card" id="card-player-kmplayer">
+                <input type="radio" id="player-kmplayer" name="player-mode" value="kmplayer">
+                <div class="radio-card-content">
+                  <span class="radio-title">KMPlayer</span>
+                  <p>Forces the application to launch videos using KMPlayer. Searches standard installation folders and system PATH directories.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-footer">
+            <button id="btn-save-settings" class="btn btn-primary">Save Configuration</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Notification Toast -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- Loader Overlay -->
+  <div id="loader" class="loader-overlay hidden">
+    <div class="spinner"></div>
+    <span id="loader-text">Scanning folder...</span>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
