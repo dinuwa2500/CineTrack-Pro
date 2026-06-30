@@ -64,6 +64,17 @@
 
       <!-- Main Dashboard View -->
       <div id="dashboard-view" class="dashboard-container hidden">
+        <!-- Metadata Alert Banner -->
+        <div id="metadata-alert-banner" class="metadata-warning-banner hidden">
+          <div class="warning-icon">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          </div>
+          <div class="warning-text" id="metadata-alert-text">
+            TMDb API Key is invalid or unauthorized (Error 401).
+          </div>
+          <button id="btn-fix-metadata-key" class="btn btn-warning-action btn-sm">Fix Key</button>
+        </div>
+
         <!-- Stats Summary Banner -->
         <section class="stats-banner" id="stats-banner-el">
           <div class="stats-banner-overlay"></div>
@@ -211,12 +222,25 @@
           <hr class="divider">
 
           <div class="settings-group">
-            <label class="settings-label">TMDB Metadata Enrichment</label>
+            <label class="settings-label" for="metadata-provider-select">Metadata Provider</label>
+            <div class="select-wrapper" style="width: 100%; max-width: 500px; margin-bottom: 12px;">
+              <select id="metadata-provider-select" style="width: 100%; background-color: hsla(217, 33%, 8%, 0.6); border: 1px solid var(--border-color); padding: 12px 16px; border-radius: var(--radius-md); font-size: 14px; color: var(--text-primary); outline: none; cursor: pointer;">
+                <option value="tvmaze">TVmaze (Free, No API Key Required)</option>
+                <option value="tmdb">TheMovieDB (Requires TMDb API Key)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="settings-group" id="tmdb-api-key-group" style="display: none;">
+            <label class="settings-label" for="tmdb-api-key-input">TMDb API Key</label>
             <div class="input-tag-wrapper">
-              <input type="text" id="tmdb-api-key-input" placeholder="Leave blank to use pre-configured key..." style="width: 100%; max-width: 500px; background-color: hsla(217, 33%, 8%, 0.6); border: 1px solid var(--border-color); padding: 12px 16px; border-radius: var(--radius-md); font-size: 14px; color: var(--text-primary);">
+              <div style="display: flex; gap: 12px; align-items: center; max-width: 500px; width: 100%;">
+                <input type="text" id="tmdb-api-key-input" placeholder="Enter your 32-character TMDb API Key..." style="flex: 1; background-color: hsla(217, 33%, 8%, 0.6); border: 1px solid var(--border-color); padding: 12px 16px; border-radius: var(--radius-md); font-size: 14px; color: var(--text-primary); outline: none;">
+                <span id="tmdb-key-status" class="status-badge badge-neutral">No Key</span>
+              </div>
               <span class="input-tip">
-                CineTrack Pro ships with a pre-configured key that works out of the box. You only need to enter your own key here if you want to override it.
-                <a href="https://www.themoviedb.org/settings/api" target="_blank" style="color: var(--primary-color); text-decoration: none; margin-left: 4px;">Get a personal API key here</a>.
+                TMDb requires an API Key for access.
+                <a href="https://www.themoviedb.org/settings/api" target="_blank" style="color: var(--primary-color); text-decoration: none; margin-left: 4px;">Get a free TMDb API Key here</a>.
               </span>
             </div>
           </div>
@@ -242,11 +266,11 @@
   <div id="tmdb-modal" class="modal-overlay hidden">
     <div class="modal-card">
       <div class="modal-header">
-        <h2>Link TV Show to TMDB</h2>
+        <h2 id="tmdb-modal-title">Link TV Show Metadata</h2>
         <button id="btn-close-tmdb-modal" class="btn-close">&times;</button>
       </div>
       <div class="modal-body">
-        <p class="modal-subtitle">Search and associate this folder with the correct TV series on TheMovieDB.</p>
+        <p id="tmdb-modal-subtitle" class="modal-subtitle">Search and associate this folder with the correct TV series.</p>
         <div class="modal-search-wrapper">
           <input type="text" id="tmdb-search-input" placeholder="Search TV show name...">
           <button id="btn-search-tmdb" class="btn btn-primary">Search</button>

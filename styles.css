@@ -1444,3 +1444,112 @@ button, input {
   margin-bottom: 4px;
 }
 
+/* Metadata warning banner in dashboard */
+.metadata-warning-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: hsla(350, 80%, 15%, 0.45);
+  border: 1.5px solid hsla(350, 70%, 40%, 0.35);
+  padding: 14px 20px;
+  border-radius: var(--radius-md);
+  margin-bottom: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  backdrop-filter: var(--glass-blur);
+  animation: fadeIn 0.3s ease-out;
+}
+
+.metadata-warning-banner.hidden {
+  display: none !important;
+}
+
+.metadata-warning-banner .warning-icon {
+  color: hsl(350, 85%, 60%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.metadata-warning-banner .warning-text {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  flex: 1;
+}
+
+.metadata-warning-banner .warning-text strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.btn-warning-action {
+  background: hsl(350, 85%, 55%);
+  color: #fff;
+  border: none;
+  font-weight: 600;
+  transition: var(--transition-smooth);
+}
+
+.btn-warning-action:hover {
+  background: hsl(350, 85%, 60%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25);
+}
+
+.btn-warning-action:active {
+  transform: translateY(0);
+}
+
+/* Status validation badge in settings */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  transition: var(--transition-smooth);
+  border: 1px solid transparent;
+}
+
+.badge-neutral {
+  background: hsla(217, 33%, 20%, 0.4);
+  color: var(--text-muted);
+  border-color: var(--border-color);
+}
+
+.badge-valid {
+  background: hsla(142, 76%, 20%, 0.25);
+  color: hsl(142, 76%, 45%);
+  border-color: hsla(142, 76%, 45%, 0.2);
+}
+
+.badge-invalid {
+  background: hsla(350, 80%, 20%, 0.25);
+  color: hsl(350, 85%, 60%);
+  border-color: hsla(350, 85%, 60%, 0.2);
+}
+
+.badge-testing {
+  background: hsla(38, 92%, 20%, 0.25);
+  color: hsl(38, 92%, 50%);
+  border-color: hsla(38, 92%, 50%, 0.2);
+  animation: pulse 1.5s infinite ease-in-out;
+}
+
+@keyframes pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+

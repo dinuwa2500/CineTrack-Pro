@@ -11,4 +11,5 @@ contextBridge.exposeInMainWorld('api', {
   fetchShowMetadata: (args) => ipcRenderer.invoke('fetch-show-metadata', args),
   searchTmdb: (query) => ipcRenderer.invoke('search-tmdb', query),
   linkTmdbId: (args) => ipcRenderer.invoke('link-tmdb-id', args),
+  validateTmdbKey: (apiKey) => ipcRenderer.invoke('validate-tmdb-key', apiKey),
 });

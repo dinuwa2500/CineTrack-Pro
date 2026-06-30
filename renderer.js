@@ -14,6 +14,7 @@ let state = {
   tmdbApiKey: '',
   antiSpoilerShield: true,
   showMetadata: null,
+  metadataProvider: 'tvmaze', // 'tvmaze' or 'tmdb'
 };
 
 // ==========================================================================
@@ -56,6 +57,14 @@ const el = {
   tmdbSearchInput: document.getElementById('tmdb-search-input'),
   btnSearchTmdb: document.getElementById('btn-search-tmdb'),
   tmdbSearchResults: document.getElementById('tmdb-search-results'),
+  metadataProviderSelect: document.getElementById('metadata-provider-select'),
+  tmdbApiKeyGroup: document.getElementById('tmdb-api-key-group'),
+  tmdbKeyStatus: document.getElementById('tmdb-key-status'),
+  metadataAlertBanner: document.getElementById('metadata-alert-banner'),
+  metadataAlertText: document.getElementById('metadata-alert-text'),
+  btnFixMetadataKey: document.getElementById('btn-fix-metadata-key'),
+  tmdbModalTitle: document.getElementById('tmdb-modal-title'),
+  tmdbModalSubtitle: document.getElementById('tmdb-modal-subtitle'),
   
   // Search & Filter
   episodeSearch: document.getElementById('episode-search'),
@@ -132,6 +141,7 @@ async function init() {
     state.mediaPlayer = config.mediaPlayer || 'default';
     state.tmdbApiKey = config.tmdbApiKey || '';
     state.antiSpoilerShield = config.antiSpoilerShield !== undefined ? config.antiSpoilerShield : true;
+    state.metadataProvider = config.metadataProvider || 'tvmaze';
     
     // Sync settings form
     syncSettingsForm();
@@ -141,6 +151,31 @@ async function init() {
     attachListeners();
   } catch (error) {
     console.error('Failed to initialize app settings:', error);
+  }
+}
+
+async function validateTMDbKeyUI(apiKey) {
+  if (!apiKey) {
+    el.tmdbKeyStatus.className = 'status-badge badge-neutral';
+    el.tmdbKeyStatus.textContent = 'No Key';
+    return;
+  }
+  
+  el.tmdbKeyStatus.className = 'status-badge badge-testing';
+  el.tmdbKeyStatus.textContent = 'Testing...';
+  
+  try {
+    const res = await window.api.validateTmdbKey(apiKey);
+    if (res.valid) {
+      el.tmdbKeyStatus.className = 'status-badge badge-valid';
+      el.tmdbKeyStatus.textContent = 'Valid Key';
+    } else {
+      el.tmdbKeyStatus.className = 'status-badge badge-invalid';
+      el.tmdbKeyStatus.textContent = 'Invalid Key';
+    }
+  } catch (err) {
+    el.tmdbKeyStatus.className = 'status-badge badge-invalid';
+    el.tmdbKeyStatus.textContent = 'Error';
   }
 }
 
@@ -173,6 +208,15 @@ function syncSettingsForm() {
   // Sync TMDB options
   el.tmdbApiKeyInput.value = state.tmdbApiKey || '';
   el.chkAntiSpoiler.checked = state.antiSpoilerShield;
+  
+  // Sync Provider options
+  el.metadataProviderSelect.value = state.metadataProvider;
+  if (state.metadataProvider === 'tmdb') {
+    el.tmdbApiKeyGroup.style.display = 'block';
+    validateTMDbKeyUI(state.tmdbApiKey);
+  } else {
+    el.tmdbApiKeyGroup.style.display = 'none';
+  }
   
   // Update mode badge
   el.modeBadge.textContent = state.dbMode === 'db' 
@@ -239,9 +283,46 @@ function attachListeners() {
   // Save settings
   el.btnSaveSettings.addEventListener('click', saveSettings);
 
+  // Metadata Provider select change
+  el.metadataProviderSelect.addEventListener('change', (e) => {
+    const val = e.target.value;
+    if (val === 'tmdb') {
+      el.tmdbApiKeyGroup.style.display = 'block';
+      validateTMDbKeyUI(el.tmdbApiKeyInput.value.trim());
+    } else {
+      el.tmdbApiKeyGroup.style.display = 'none';
+    }
+  });
+
+  // TMDB key input testing trigger
+  let valTimeout;
+  el.tmdbApiKeyInput.addEventListener('input', (e) => {
+    clearTimeout(valTimeout);
+    const key = e.target.value.trim();
+    valTimeout = setTimeout(() => {
+      validateTMDbKeyUI(key);
+    }, 600);
+  });
+
+  // Warning banner click redirect
+  el.btnFixMetadataKey.addEventListener('click', () => {
+    switchView('settings');
+    setTimeout(() => {
+      el.tmdbApiKeyInput.focus();
+      el.tmdbApiKeyInput.select();
+    }, 150);
+  });
+
   // TMDB Link Modal Listeners
   el.btnLinkTmdb.addEventListener('click', () => {
     if (!state.activeFolderPath) return;
+    
+    const provider = state.metadataProvider;
+    el.tmdbModalTitle.textContent = provider === 'tmdb' ? 'Link TV Show to TMDb' : 'Link TV Show to TVmaze';
+    el.tmdbModalSubtitle.textContent = provider === 'tmdb' 
+      ? 'Search and associate this folder with the correct TV series on TheMovieDB.'
+      : 'Search and associate this folder with the correct TV series on TVmaze.';
+    el.tmdbSearchInput.placeholder = provider === 'tmdb' ? 'Search TMDb...' : 'Search TVmaze...';
     
     // Auto-prepopulate search input with cleaned folder name
     const cleaned = pathBasename(state.activeFolderPath)
@@ -330,12 +411,24 @@ async function scanFolder(folderPath) {
     state.dbMode = result.dbMode;
     state.watchTag = result.watchTag;
     
-    // Fetch TMDB Metadata
+    // Fetch Metadata
     state.showMetadata = null;
+    el.metadataAlertBanner.classList.add('hidden');
     try {
-      state.showMetadata = await window.api.fetchShowMetadata({ folderPath });
+      const res = await window.api.fetchShowMetadata({ folderPath });
+      if (res && res.error) {
+        if (res.error === 'unauthorized') {
+          el.metadataAlertText.innerHTML = `<strong>TMDb API Key is unauthorized or invalid</strong>. Please configure your TMDb key in settings.`;
+          el.metadataAlertBanner.classList.remove('hidden');
+        } else if (res.error === 'missing_key') {
+          el.metadataAlertText.innerHTML = `<strong>TMDb API Key not configured</strong>. TMDb requires an API Key. Switch to TVmaze in settings for a keyless experience.`;
+          el.metadataAlertBanner.classList.remove('hidden');
+        }
+      } else {
+        state.showMetadata = res;
+      }
     } catch (err) {
-      console.error('Failed to fetch TMDB show metadata:', err);
+      console.error('Failed to fetch show metadata:', err);
     }
     
     // Auto collapse/expand setup
@@ -444,7 +537,9 @@ function renderDashboard() {
   // Show poster & backdrop integration
   if (state.showMetadata) {
     if (state.showMetadata.posterPath) {
-      el.showPoster.src = `https://image.tmdb.org/t/p/w185${state.showMetadata.posterPath}`;
+      el.showPoster.src = state.showMetadata.posterPath.startsWith('http')
+        ? state.showMetadata.posterPath
+        : `https://image.tmdb.org/t/p/w185${state.showMetadata.posterPath}`;
       el.showPosterContainer.classList.remove('hidden');
     } else {
       el.showPoster.src = '';
@@ -454,7 +549,10 @@ function renderDashboard() {
     const overlay = el.statsBannerEl.querySelector('.stats-banner-overlay');
     if (overlay) {
       if (state.showMetadata.backdropPath) {
-        overlay.style.backgroundImage = `url(https://image.tmdb.org/t/p/w780${state.showMetadata.backdropPath})`;
+        const bgUrl = state.showMetadata.backdropPath.startsWith('http')
+          ? state.showMetadata.backdropPath
+          : `https://image.tmdb.org/t/p/w780${state.showMetadata.backdropPath}`;
+        overlay.style.backgroundImage = `url(${bgUrl})`;
         overlay.style.opacity = '1';
       } else {
         overlay.style.backgroundImage = 'none';
@@ -537,7 +635,10 @@ function renderSeasons(episodesList) {
     if (state.showMetadata && state.showMetadata.seasons && state.showMetadata.seasons[seasonNum]) {
       const sMetadata = state.showMetadata.seasons[seasonNum];
       if (sMetadata.posterPath) {
-        seasonPosterHtml = `<img class="season-poster-thumb" src="https://image.tmdb.org/t/p/w92${sMetadata.posterPath}" alt="Season ${seasonNum} Poster">`;
+        const sPosterUrl = sMetadata.posterPath.startsWith('http')
+          ? sMetadata.posterPath
+          : `https://image.tmdb.org/t/p/w92${sMetadata.posterPath}`;
+        seasonPosterHtml = `<img class="season-poster-thumb" src="${sPosterUrl}" alt="Season ${seasonNum} Poster">`;
       }
     }
 
@@ -598,7 +699,9 @@ function renderSeasons(episodesList) {
 
       let stillUrl = '';
       if (epMetadata && epMetadata.stillPath) {
-        stillUrl = `https://image.tmdb.org/t/p/w300${epMetadata.stillPath}`;
+        stillUrl = epMetadata.stillPath.startsWith('http')
+          ? epMetadata.stillPath
+          : `https://image.tmdb.org/t/p/w300${epMetadata.stillPath}`;
       }
       
       const hasShield = state.antiSpoilerShield && !ep.watched;
@@ -883,6 +986,7 @@ async function saveSettings() {
   const player = el.radioPlayerDefault.checked ? 'default' : 'kmplayer';
   const tmdbKey = el.tmdbApiKeyInput.value.trim();
   const antiSpoiler = el.chkAntiSpoiler.checked;
+  const provider = el.metadataProviderSelect.value;
   
   if (!tag && mode === 'rename') {
     showToast('Renaming mode requires a finished tag suffix!', 'error');
@@ -896,7 +1000,8 @@ async function saveSettings() {
       customTag: tag,
       mediaPlayer: player,
       tmdbApiKey: tmdbKey,
-      antiSpoilerShield: antiSpoiler
+      antiSpoilerShield: antiSpoiler,
+      metadataProvider: provider
     });
 
     state.dbMode = updated.defaultMode;
@@ -904,6 +1009,7 @@ async function saveSettings() {
     state.mediaPlayer = updated.mediaPlayer || 'default';
     state.tmdbApiKey = updated.tmdbApiKey || '';
     state.antiSpoilerShield = updated.antiSpoilerShield !== undefined ? updated.antiSpoilerShield : true;
+    state.metadataProvider = updated.metadataProvider || 'tvmaze';
 
     syncSettingsForm();
     showToast('Configuration saved successfully!', 'success');
@@ -925,7 +1031,8 @@ async function performTmdbSearch() {
   const query = el.tmdbSearchInput.value.trim();
   if (!query) return;
   
-  el.tmdbSearchResults.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">Searching TMDB...</div>';
+  const provider = state.metadataProvider;
+  el.tmdbSearchResults.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 20px;">Searching ${provider === 'tmdb' ? 'TMDb' : 'TVmaze'}...</div>`;
   try {
     const results = await window.api.searchTmdb(query);
     el.tmdbSearchResults.innerHTML = '';
@@ -939,7 +1046,7 @@ async function performTmdbSearch() {
       item.className = 'tmdb-result-item';
       
       const posterUrl = show.poster_path 
-        ? `https://image.tmdb.org/t/p/w92${show.poster_path}`
+        ? (show.poster_path.startsWith('http') ? show.poster_path : `https://image.tmdb.org/t/p/w92${show.poster_path}`)
         : '';
         
       const posterHtml = posterUrl 
@@ -972,7 +1079,8 @@ async function performTmdbSearch() {
           console.error(err);
           showToast('Failed to link show: ' + err.message, 'error');
         } finally {
-          hideLoader();
+          showLoader('Scanning files and loading metadata...');
+          await scanFolder(state.activeFolderPath);
         }
       });
       

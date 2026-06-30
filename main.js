@@ -24,6 +24,7 @@ function readConfig() {
         tmdbApiKey: '',
         antiSpoilerShield: true,
         showLinkages: {},
+        metadataProvider: 'tvmaze',
         ...parsed
       };
     }
@@ -36,7 +37,8 @@ function readConfig() {
     customTag: ' [Finished]',
     tmdbApiKey: '',
     antiSpoilerShield: true,
-    showLinkages: {}
+    showLinkages: {},
+    metadataProvider: 'tvmaze'
   };
 }
 
@@ -478,10 +480,10 @@ ipcMain.handle('bulk-toggle-watched', async (event, { folderPath, episodes, watc
 });
 
 // ==========================================================================
-// TMDB METADATA SCRAPING & CACHING INTEGRATION
+// METADATA SCRAPING & CACHING INTEGRATION (TVMAZE & TMDB)
 // ==========================================================================
 
-const DEFAULT_TMDB_API_KEY = '80512803b90f4886e85d68d1844b895e';
+const DEFAULT_TMDB_API_KEY = '';
 
 const CACHE_DIR = path.join(app.getPath('userData'), 'metadata-cache');
 if (!fs.existsSync(CACHE_DIR)) {
@@ -513,6 +515,7 @@ function cleanShowName(folderPath) {
   return cleanName || folderName;
 }
 
+// TMDb fetch helper
 async function fetchTMDB(endpoint, apiKey, queryParams = {}) {
   const url = new URL(`https://api.themoviedb.org/3${endpoint}`);
   url.searchParams.append('api_key', apiKey);
@@ -527,6 +530,21 @@ async function fetchTMDB(endpoint, apiKey, queryParams = {}) {
   return response.json();
 }
 
+// TVmaze fetch helper
+async function fetchTVmaze(endpoint, queryParams = {}) {
+  const url = new URL(`https://api.tvmaze.com${endpoint}`);
+  for (const [key, value] of Object.entries(queryParams)) {
+    url.searchParams.append(key, value);
+  }
+  
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    throw new Error(`TVmaze API error: ${response.status} ${response.statusText}`);
+  }
+  return response.json();
+}
+
+// TMDb details scraper
 async function scrapeShowDetails(showId, folderPath, apiKey) {
   const showData = await fetchTMDB(`/tv/${showId}`, apiKey);
   
@@ -539,7 +557,6 @@ async function scrapeShowDetails(showId, folderPath, apiKey) {
   };
   
   if (showData.seasons && Array.isArray(showData.seasons)) {
-    // Only scrape seasons that have a valid season number
     for (const s of showData.seasons) {
       const sNum = s.season_number;
       try {
@@ -578,14 +595,56 @@ async function scrapeShowDetails(showId, folderPath, apiKey) {
   
   const cacheFile = getCacheFilename(folderPath);
   fs.writeFileSync(cacheFile, JSON.stringify(metadata, null, 2), 'utf-8');
-  
   return metadata;
 }
 
-// IPC Handlers for TMDB integration
+// TVmaze details scraper
+async function scrapeTVmazeShowDetails(showId, folderPath) {
+  const showData = await fetchTVmaze(`/shows/${showId}`);
+  const episodesData = await fetchTVmaze(`/shows/${showId}/episodes`);
+  
+  const posterUrl = showData.image ? (showData.image.original || showData.image.medium) : '';
+  
+  const metadata = {
+    showId: showData.id,
+    showName: showData.name,
+    backdropPath: posterUrl,
+    posterPath: posterUrl,
+    seasons: {}
+  };
+  
+  if (episodesData && Array.isArray(episodesData)) {
+    for (const ep of episodesData) {
+      const sNum = ep.season;
+      if (!metadata.seasons[sNum]) {
+        metadata.seasons[sNum] = {
+          posterPath: posterUrl,
+          episodes: {}
+        };
+      }
+      
+      const cleanOverview = ep.summary ? ep.summary.replace(/<\/?[^>]+(>|$)/g, '').trim() : '';
+      
+      metadata.seasons[sNum].episodes[ep.number] = {
+        name: ep.name,
+        overview: cleanOverview,
+        stillPath: ep.image ? (ep.image.medium || ep.image.original) : null,
+        rating: ep.rating && ep.rating.average ? ep.rating.average.toFixed(1) : null,
+        directors: [],
+        guestStars: []
+      };
+    }
+  }
+  
+  const cacheFile = getCacheFilename(folderPath);
+  fs.writeFileSync(cacheFile, JSON.stringify(metadata, null, 2), 'utf-8');
+  return metadata;
+}
+
+// IPC Handlers
 ipcMain.handle('fetch-show-metadata', async (event, { folderPath, forceRefresh = false }) => {
   const config = readConfig();
-  const apiKey = config.tmdbApiKey || DEFAULT_TMDB_API_KEY;
+  const provider = config.metadataProvider || 'tvmaze';
   
   const cacheFile = getCacheFilename(folderPath);
   if (!forceRefresh && fs.existsSync(cacheFile)) {
@@ -597,64 +656,120 @@ ipcMain.handle('fetch-show-metadata', async (event, { folderPath, forceRefresh =
     }
   }
   
-  if (!apiKey) {
-    return null;
-  }
-  
   let showId = config.showLinkages?.[folderPath];
-  if (!showId) {
-    // Try auto-matching
-    const cleanQuery = cleanShowName(folderPath);
-    try {
-      const searchResults = await fetchTMDB('/search/tv', apiKey, { query: cleanQuery });
-      if (searchResults.results && searchResults.results.length > 0) {
-        showId = searchResults.results[0].id;
-        
-        const updatedConfig = readConfig();
-        if (!updatedConfig.showLinkages) updatedConfig.showLinkages = {};
-        updatedConfig.showLinkages[folderPath] = showId;
-        writeConfig(updatedConfig);
+  
+  if (provider === 'tvmaze') {
+    if (!showId) {
+      const cleanQuery = cleanShowName(folderPath);
+      try {
+        const searchResults = await fetchTVmaze('/search/shows', { q: cleanQuery });
+        if (searchResults && searchResults.length > 0) {
+          showId = searchResults[0].show.id;
+          
+          const updatedConfig = readConfig();
+          if (!updatedConfig.showLinkages) updatedConfig.showLinkages = {};
+          updatedConfig.showLinkages[folderPath] = showId;
+          writeConfig(updatedConfig);
+        }
+      } catch (err) {
+        console.error('Auto TVmaze search failed:', err);
+        return null;
       }
+    }
+    
+    if (!showId) return null;
+    
+    try {
+      return await scrapeTVmazeShowDetails(showId, folderPath);
     } catch (err) {
-      console.error('Auto TMDB search failed:', err);
+      console.error('Scrape TVmaze show details failed:', err);
       return null;
     }
-  }
-  
-  if (!showId) {
-    return null;
-  }
-  
-  try {
-    return await scrapeShowDetails(showId, folderPath, apiKey);
-  } catch (err) {
-    console.error('Scrape show details failed:', err);
-    return null;
+  } else {
+    // TMDB
+    const apiKey = config.tmdbApiKey || DEFAULT_TMDB_API_KEY;
+    if (!apiKey) {
+      return { error: 'missing_key', message: 'TMDb API Key not configured' };
+    }
+    
+    if (!showId) {
+      const cleanQuery = cleanShowName(folderPath);
+      try {
+        const searchResults = await fetchTMDB('/search/tv', apiKey, { query: cleanQuery });
+        if (searchResults.results && searchResults.results.length > 0) {
+          showId = searchResults.results[0].id;
+          
+          const updatedConfig = readConfig();
+          if (!updatedConfig.showLinkages) updatedConfig.showLinkages = {};
+          updatedConfig.showLinkages[folderPath] = showId;
+          writeConfig(updatedConfig);
+        }
+      } catch (err) {
+        console.error('Auto TMDB search failed:', err);
+        if (err.message.includes('401')) {
+          return { error: 'unauthorized', message: 'TMDb API key is invalid or unauthorized (Error 401)' };
+        }
+        return null;
+      }
+    }
+    
+    if (!showId) return null;
+    
+    try {
+      return await scrapeShowDetails(showId, folderPath, apiKey);
+    } catch (err) {
+      console.error('Scrape TMDB show details failed:', err);
+      if (err.message.includes('401')) {
+        return { error: 'unauthorized', message: 'TMDb API key is invalid or unauthorized (Error 401)' };
+      }
+      return null;
+    }
   }
 });
 
 ipcMain.handle('search-tmdb', async (event, query) => {
   const config = readConfig();
-  const apiKey = config.tmdbApiKey || DEFAULT_TMDB_API_KEY;
-  if (!apiKey) {
-    throw new Error('TMDB API Key is not set. Please add it in settings.');
-  }
+  const provider = config.metadataProvider || 'tvmaze';
   
-  try {
-    const data = await fetchTMDB('/search/tv', apiKey, { query });
-    return data.results || [];
-  } catch (err) {
-    console.error('TMDB search error:', err);
-    throw err;
+  if (provider === 'tvmaze') {
+    try {
+      const results = await fetchTVmaze('/search/shows', { q: query });
+      return results.map(item => {
+        const show = item.show;
+        return {
+          id: show.id,
+          name: show.name,
+          poster_path: show.image ? (show.image.medium || show.image.original) : null,
+          overview: show.summary ? show.summary.replace(/<\/?[^>]+(>|$)/g, '').trim() : '',
+          first_air_date: show.premiered
+        };
+      });
+    } catch (err) {
+      console.error('TVmaze search error:', err);
+      throw err;
+    }
+  } else {
+    const apiKey = config.tmdbApiKey || DEFAULT_TMDB_API_KEY;
+    if (!apiKey) {
+      throw new Error('TMDB API Key is not set. Please add it in settings.');
+    }
+    
+    try {
+      const data = await fetchTMDB('/search/tv', apiKey, { query });
+      return data.results || [];
+    } catch (err) {
+      console.error('TMDB search error:', err);
+      if (err.message.includes('401')) {
+        throw new Error('TMDB API error: 401 Unauthorized. Key is invalid.');
+      }
+      throw err;
+    }
   }
 });
 
 ipcMain.handle('link-tmdb-id', async (event, { folderPath, showId }) => {
   const config = readConfig();
-  const apiKey = config.tmdbApiKey || DEFAULT_TMDB_API_KEY;
-  if (!apiKey) {
-    throw new Error('TMDB API Key is not set. Please add it in settings.');
-  }
+  const provider = config.metadataProvider || 'tvmaze';
   
   const updatedConfig = readConfig();
   if (!updatedConfig.showLinkages) updatedConfig.showLinkages = {};
@@ -662,10 +777,37 @@ ipcMain.handle('link-tmdb-id', async (event, { folderPath, showId }) => {
   writeConfig(updatedConfig);
   
   try {
-    return await scrapeShowDetails(showId, folderPath, apiKey);
+    if (provider === 'tvmaze') {
+      return await scrapeTVmazeShowDetails(showId, folderPath);
+    } else {
+      const apiKey = config.tmdbApiKey || DEFAULT_TMDB_API_KEY;
+      if (!apiKey) {
+        throw new Error('TMDB API Key is not set. Please add it in settings.');
+      }
+      return await scrapeShowDetails(showId, folderPath, apiKey);
+    }
   } catch (err) {
-    console.error('Scrape show details after link failed:', err);
+    console.error('Link show failed:', err);
     throw err;
+  }
+});
+
+ipcMain.handle('validate-tmdb-key', async (event, apiKey) => {
+  if (!apiKey) {
+    return { valid: false, reason: 'Empty API Key' };
+  }
+  try {
+    const url = `https://api.themoviedb.org/3/configuration?api_key=${apiKey}`;
+    const response = await fetch(url);
+    if (response.status === 200) {
+      return { valid: true };
+    } else if (response.status === 401) {
+      return { valid: false, reason: '401 Unauthorized (Invalid Key)' };
+    } else {
+      return { valid: false, reason: `API returned HTTP ${response.status}` };
+    }
+  } catch (err) {
+    return { valid: false, reason: 'Network error or TMDb API offline' };
   }
 });
 
