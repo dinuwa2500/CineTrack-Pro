@@ -8,4 +8,7 @@ contextBridge.exposeInMainWorld('api', {
   bulkToggleWatched: (args) => ipcRenderer.invoke('bulk-toggle-watched', args),
   getAppConfig: () => ipcRenderer.invoke('get-app-config'),
   saveAppConfig: (config) => ipcRenderer.invoke('save-app-config', config),
+  fetchShowMetadata: (args) => ipcRenderer.invoke('fetch-show-metadata', args),
+  searchTmdb: (query) => ipcRenderer.invoke('search-tmdb', query),
+  linkTmdbId: (args) => ipcRenderer.invoke('link-tmdb-id', args),
 });

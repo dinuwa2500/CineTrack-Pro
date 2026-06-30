@@ -11,6 +11,9 @@ let state = {
   searchQuery: '',
   collapsedSeasons: new Set(),
   history: [],
+  tmdbApiKey: '',
+  antiSpoilerShield: true,
+  showMetadata: null,
 };
 
 // ==========================================================================
@@ -40,6 +43,19 @@ const el = {
   statUnwatched: document.getElementById('stat-unwatched'),
   statPercent: document.getElementById('stat-percent'),
   progressRingFill: document.querySelector('.progress-ring-fill'),
+  
+  // TMDB / Metadata elements
+  tmdbApiKeyInput: document.getElementById('tmdb-api-key-input'),
+  chkAntiSpoiler: document.getElementById('chk-anti-spoiler'),
+  statsBannerEl: document.getElementById('stats-banner-el'),
+  showPosterContainer: document.getElementById('show-poster-container'),
+  showPoster: document.getElementById('show-poster'),
+  btnLinkTmdb: document.getElementById('btn-link-tmdb'),
+  tmdbModal: document.getElementById('tmdb-modal'),
+  btnCloseTmdbModal: document.getElementById('btn-close-tmdb-modal'),
+  tmdbSearchInput: document.getElementById('tmdb-search-input'),
+  btnSearchTmdb: document.getElementById('btn-search-tmdb'),
+  tmdbSearchResults: document.getElementById('tmdb-search-results'),
   
   // Search & Filter
   episodeSearch: document.getElementById('episode-search'),
@@ -110,10 +126,12 @@ async function init() {
   try {
     // Load config from main process
     const config = await window.api.getAppConfig();
-     state.history = config.history || [];
+    state.history = config.history || [];
     state.dbMode = config.defaultMode || 'db';
     state.watchTag = config.customTag || ' [Finished]';
     state.mediaPlayer = config.mediaPlayer || 'default';
+    state.tmdbApiKey = config.tmdbApiKey || '';
+    state.antiSpoilerShield = config.antiSpoilerShield !== undefined ? config.antiSpoilerShield : true;
     
     // Sync settings form
     syncSettingsForm();
@@ -151,6 +169,10 @@ function syncSettingsForm() {
     el.cardPlayerDefault.classList.add('active');
     el.cardPlayerKmplayer.classList.remove('active');
   }
+  
+  // Sync TMDB options
+  el.tmdbApiKeyInput.value = state.tmdbApiKey || '';
+  el.chkAntiSpoiler.checked = state.antiSpoilerShield;
   
   // Update mode badge
   el.modeBadge.textContent = state.dbMode === 'db' 
@@ -217,6 +239,42 @@ function attachListeners() {
   // Save settings
   el.btnSaveSettings.addEventListener('click', saveSettings);
 
+  // TMDB Link Modal Listeners
+  el.btnLinkTmdb.addEventListener('click', () => {
+    if (!state.activeFolderPath) return;
+    
+    // Auto-prepopulate search input with cleaned folder name
+    const cleaned = pathBasename(state.activeFolderPath)
+      .replace(/\[.*?\]|\(.*?\)/g, '')
+      .replace(/[\.\-_]/g, ' ')
+      .replace(/\b\d{3,4}p\b/gi, '')
+      .replace(/\b(x264|x265|h264|hevc|webrip|web-dl|bluray|brrip|hdtv|aac|dts|dd5\.1|ac3)\b/gi, '')
+      .replace(/\b(season\s*\d+|\bS\d{2}\b|S\d{1,2}|E\d{2})\b.*/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+      
+    el.tmdbSearchInput.value = cleaned;
+    el.tmdbSearchResults.innerHTML = '';
+    el.tmdbModal.classList.remove('hidden');
+  });
+
+  el.btnCloseTmdbModal.addEventListener('click', () => {
+    el.tmdbModal.classList.add('hidden');
+  });
+
+  el.tmdbModal.addEventListener('click', (e) => {
+    if (e.target === el.tmdbModal) {
+      el.tmdbModal.classList.add('hidden');
+    }
+  });
+
+  el.btnSearchTmdb.addEventListener('click', performTmdbSearch);
+  el.tmdbSearchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      performTmdbSearch();
+    }
+  });
+
   // Navigation Switch
   el.btnDashboard.addEventListener('click', () => {
     switchView('dashboard');
@@ -271,6 +329,14 @@ async function scanFolder(folderPath) {
     state.episodes = result.episodes;
     state.dbMode = result.dbMode;
     state.watchTag = result.watchTag;
+    
+    // Fetch TMDB Metadata
+    state.showMetadata = null;
+    try {
+      state.showMetadata = await window.api.fetchShowMetadata({ folderPath });
+    } catch (err) {
+      console.error('Failed to fetch TMDB show metadata:', err);
+    }
     
     // Auto collapse/expand setup
     // Find the first season containing unwatched episodes and expand it; collapse others by default.
@@ -368,8 +434,42 @@ function groupEpisodesBySeason(episodes) {
 // ==========================================================================
 function renderDashboard() {
   // Title & Path
-  el.tvShowTitle.textContent = pathBasename(state.activeFolderPath);
+  if (state.showMetadata && state.showMetadata.showName) {
+    el.tvShowTitle.textContent = state.showMetadata.showName;
+  } else {
+    el.tvShowTitle.textContent = pathBasename(state.activeFolderPath);
+  }
   el.tvShowPath.textContent = state.activeFolderPath;
+
+  // Show poster & backdrop integration
+  if (state.showMetadata) {
+    if (state.showMetadata.posterPath) {
+      el.showPoster.src = `https://image.tmdb.org/t/p/w185${state.showMetadata.posterPath}`;
+      el.showPosterContainer.classList.remove('hidden');
+    } else {
+      el.showPoster.src = '';
+      el.showPosterContainer.classList.add('hidden');
+    }
+
+    const overlay = el.statsBannerEl.querySelector('.stats-banner-overlay');
+    if (overlay) {
+      if (state.showMetadata.backdropPath) {
+        overlay.style.backgroundImage = `url(https://image.tmdb.org/t/p/w780${state.showMetadata.backdropPath})`;
+        overlay.style.opacity = '1';
+      } else {
+        overlay.style.backgroundImage = 'none';
+        overlay.style.opacity = '0';
+      }
+    }
+  } else {
+    el.showPoster.src = '';
+    el.showPosterContainer.classList.add('hidden');
+    const overlay = el.statsBannerEl.querySelector('.stats-banner-overlay');
+    if (overlay) {
+      overlay.style.backgroundImage = 'none';
+      overlay.style.opacity = '0';
+    }
+  }
 
   // Compute overall stats
   const totalCount = state.episodes.length;
@@ -432,14 +532,24 @@ function renderSeasons(episodesList) {
     card.className = `season-card ${isCollapsed ? 'collapsed' : ''}`;
     card.dataset.season = seasonNum;
 
+    // Extract season poster
+    let seasonPosterHtml = '';
+    if (state.showMetadata && state.showMetadata.seasons && state.showMetadata.seasons[seasonNum]) {
+      const sMetadata = state.showMetadata.seasons[seasonNum];
+      if (sMetadata.posterPath) {
+        seasonPosterHtml = `<img class="season-poster-thumb" src="https://image.tmdb.org/t/p/w92${sMetadata.posterPath}" alt="Season ${seasonNum} Poster">`;
+      }
+    }
+
     // Header Structure
     const header = document.createElement('div');
     header.className = 'season-header';
     header.innerHTML = `
-      <div class="season-title-group">
+      <div class="season-title-group" style="display: flex; align-items: center; gap: 16px;">
         <svg class="season-chevron" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="6 9 12 15 18 9"/>
         </svg>
+        ${seasonPosterHtml}
         <span class="season-title">Season ${seasonNum}</span>
         <span class="season-badge">${total} ${total === 1 ? 'episode' : 'episodes'}</span>
       </div>
@@ -477,12 +587,105 @@ function renderSeasons(episodesList) {
         ? `S${String(ep.season).padStart(2, '0')}E${String(ep.episode).padStart(2, '0')}` 
         : `Ep. Unknown`;
 
-      // Episode structure
+      // Retrieve TMDB metadata
+      let epMetadata = null;
+      if (state.showMetadata && state.showMetadata.seasons && state.showMetadata.seasons[ep.season]) {
+        const sMetadata = state.showMetadata.seasons[ep.season];
+        if (sMetadata.episodes && sMetadata.episodes[ep.episode]) {
+          epMetadata = sMetadata.episodes[ep.episode];
+        }
+      }
+
+      let stillUrl = '';
+      if (epMetadata && epMetadata.stillPath) {
+        stillUrl = `https://image.tmdb.org/t/p/w300${epMetadata.stillPath}`;
+      }
+      
+      const hasShield = state.antiSpoilerShield && !ep.watched;
+      
+      let thumbnailHtml = '';
+      if (stillUrl) {
+        thumbnailHtml = `
+          <div class="ep-thumbnail-container">
+            <img class="ep-thumbnail ${hasShield ? 'blurred' : ''}" src="${stillUrl}" alt="Episode Thumbnail">
+            ${hasShield ? `
+              <div class="ep-blur-overlay" id="blur-overlay-${ep.season}-${ep.episode}">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+                <span>Reveal Spoiler</span>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      } else {
+        thumbnailHtml = `
+          <div class="ep-thumbnail-container" style="display: flex; align-items: center; justify-content: center; background: hsla(217, 33%, 5%, 0.6);">
+            <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--text-muted);">
+              <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+              <line x1="7" y1="2" x2="7" y2="22"></line>
+              <line x1="17" y1="2" x2="17" y2="22"></line>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <line x1="2" y1="7" x2="7" y2="7"></line>
+              <line x1="2" y1="17" x2="7" y2="17"></line>
+              <line x1="17" y1="17" x2="22" y2="17"></line>
+              <line x1="17" y1="7" x2="22" y2="7"></line>
+            </svg>
+          </div>
+        `;
+      }
+
+      const ratingHtml = epMetadata && epMetadata.rating 
+        ? `<span class="ep-rating"><svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor" stroke="currentColor" stroke-width="2" style="color: var(--warning-color);"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> ${epMetadata.rating}</span>`
+        : '';
+        
+      const epTitle = epMetadata && epMetadata.name ? epMetadata.name : ep.displayName;
+      const epSubtitle = epMetadata && epMetadata.name ? ep.displayName : '';
+      
+      let plotHtml = '';
+      if (epMetadata) {
+        const overview = epMetadata.overview || 'No description available.';
+        if (hasShield) {
+          plotHtml = `
+            <div class="ep-plot spoiler-hidden" id="plot-${ep.season}-${ep.episode}">
+              Plot hidden. Click to reveal summary.
+            </div>
+            <div class="ep-plot hidden" id="plot-actual-${ep.season}-${ep.episode}">
+              ${overview}
+            </div>
+          `;
+        } else {
+          plotHtml = `<div class="ep-plot">${overview}</div>`;
+        }
+      } else {
+        plotHtml = `<div class="ep-plot">No metadata description available. Ensure a TMDB API Key is configured and the show is linked.</div>`;
+      }
+      
+      let creditsHtml = '';
+      if (epMetadata && (epMetadata.directors.length > 0 || epMetadata.guestStars.length > 0)) {
+        const directorsText = epMetadata.directors.length > 0 ? `<span><strong>Dir:</strong> ${epMetadata.directors.join(', ')}</span>` : '';
+        const guestsText = epMetadata.guestStars.length > 0 ? `<span><strong>Guests:</strong> ${epMetadata.guestStars.join(', ')}</span>` : '';
+        creditsHtml = `
+          <div class="ep-credits">
+            ${directorsText}
+            ${guestsText}
+          </div>
+        `;
+      }
+
       epCard.innerHTML = `
-        <div class="episode-info">
-          <span class="ep-tag">${epCode}</span>
-          <span class="ep-name" title="${ep.displayName}">${ep.displayName}</span>
-          <span class="ep-meta">${ep.sizeFormatted}</span>
+        ${thumbnailHtml}
+        <div class="episode-info" style="gap: 8px;">
+          <div class="ep-rating-row" style="display: flex; justify-content: space-between; align-items: center;">
+            <span class="ep-tag">${epCode}</span>
+            ${ratingHtml}
+          </div>
+          <span class="ep-name" title="${epTitle}" style="font-weight:600; -webkit-line-clamp:1; max-height:22px;">${epTitle}</span>
+          ${epSubtitle ? `<span class="ep-meta" title="${epSubtitle}" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; display:block; margin-top:-4px;">${epSubtitle}</span>` : ''}
+          ${plotHtml}
+          ${creditsHtml}
+          <span class="ep-meta" style="margin-top: 4px;">${ep.sizeFormatted}</span>
         </div>
         <div class="episode-actions">
           <button class="play-trigger" title="Play Episode">
@@ -506,6 +709,28 @@ function renderSeasons(episodesList) {
           showToast('Failed to play file: ' + err.message, 'error');
         }
       });
+
+      // Anti-spoiler click handlers
+      if (hasShield) {
+        const overlay = epCard.querySelector(`#blur-overlay-${ep.season}-${ep.episode}`);
+        if (overlay) {
+          overlay.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const img = epCard.querySelector('.ep-thumbnail');
+            if (img) img.classList.remove('blurred');
+            overlay.classList.add('hidden');
+          });
+        }
+        const plotHidden = epCard.querySelector(`#plot-${ep.season}-${ep.episode}`);
+        const plotActual = epCard.querySelector(`#plot-actual-${ep.season}-${ep.episode}`);
+        if (plotHidden && plotActual) {
+          plotHidden.addEventListener('click', (e) => {
+            e.stopPropagation();
+            plotHidden.classList.add('hidden');
+            plotActual.classList.remove('hidden');
+          });
+        }
+      }
 
       // Checkbox watched toggle
       const checkbox = epCard.querySelector('input[type="checkbox"]');
@@ -536,9 +761,33 @@ function renderSeasons(episodesList) {
             
             if (res.watched) {
               epCard.classList.add('watched');
+              // Auto unblur
+              const img = epCard.querySelector('.ep-thumbnail');
+              if (img) img.classList.remove('blurred');
+              const overlay = epCard.querySelector(`#blur-overlay-${ep.season}-${ep.episode}`);
+              if (overlay) overlay.classList.add('hidden');
+              const plotHidden = epCard.querySelector(`#plot-${ep.season}-${ep.episode}`);
+              const plotActual = epCard.querySelector(`#plot-actual-${ep.season}-${ep.episode}`);
+              if (plotHidden && plotActual) {
+                plotHidden.classList.add('hidden');
+                plotActual.classList.remove('hidden');
+              }
               showToast(`Marked Finished: ${ep.displayName}`, 'success');
             } else {
               epCard.classList.remove('watched');
+              // Re-blur
+              if (state.antiSpoilerShield) {
+                const img = epCard.querySelector('.ep-thumbnail');
+                if (img) img.classList.add('blurred');
+                const overlay = epCard.querySelector(`#blur-overlay-${ep.season}-${ep.episode}`);
+                if (overlay) overlay.classList.remove('hidden');
+                const plotHidden = epCard.querySelector(`#plot-${ep.season}-${ep.episode}`);
+                const plotActual = epCard.querySelector(`#plot-actual-${ep.season}-${ep.episode}`);
+                if (plotHidden && plotActual) {
+                  plotHidden.classList.remove('hidden');
+                  plotActual.classList.add('hidden');
+                }
+              }
               showToast(`Marked Unwatched: ${ep.displayName}`);
             }
 
@@ -632,6 +881,8 @@ async function saveSettings() {
   const mode = el.radioModeDb.checked ? 'db' : 'rename';
   const tag = el.customTagInput.value;
   const player = el.radioPlayerDefault.checked ? 'default' : 'kmplayer';
+  const tmdbKey = el.tmdbApiKeyInput.value.trim();
+  const antiSpoiler = el.chkAntiSpoiler.checked;
   
   if (!tag && mode === 'rename') {
     showToast('Renaming mode requires a finished tag suffix!', 'error');
@@ -643,12 +894,16 @@ async function saveSettings() {
     const updated = await window.api.saveAppConfig({
       defaultMode: mode,
       customTag: tag,
-      mediaPlayer: player
+      mediaPlayer: player,
+      tmdbApiKey: tmdbKey,
+      antiSpoilerShield: antiSpoiler
     });
 
     state.dbMode = updated.defaultMode;
     state.watchTag = updated.customTag;
     state.mediaPlayer = updated.mediaPlayer || 'default';
+    state.tmdbApiKey = updated.tmdbApiKey || '';
+    state.antiSpoilerShield = updated.antiSpoilerShield !== undefined ? updated.antiSpoilerShield : true;
 
     syncSettingsForm();
     showToast('Configuration saved successfully!', 'success');
@@ -663,6 +918,69 @@ async function saveSettings() {
     showToast('Failed to save configuration: ' + err.message, 'error');
   } finally {
     hideLoader();
+  }
+}
+
+async function performTmdbSearch() {
+  const query = el.tmdbSearchInput.value.trim();
+  if (!query) return;
+  
+  el.tmdbSearchResults.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">Searching TMDB...</div>';
+  try {
+    const results = await window.api.searchTmdb(query);
+    el.tmdbSearchResults.innerHTML = '';
+    if (results.length === 0) {
+      el.tmdbSearchResults.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No results found.</div>';
+      return;
+    }
+    
+    results.forEach(show => {
+      const item = document.createElement('div');
+      item.className = 'tmdb-result-item';
+      
+      const posterUrl = show.poster_path 
+        ? `https://image.tmdb.org/t/p/w92${show.poster_path}`
+        : '';
+        
+      const posterHtml = posterUrl 
+        ? `<img class="tmdb-result-poster" src="${posterUrl}" alt="${show.name} poster">`
+        : `<div class="tmdb-result-poster" style="display:flex;align-items:center;justify-content:center;"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text-muted);"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect></svg></div>`;
+        
+      const firstAirYear = show.first_air_date ? new Date(show.first_air_date).getFullYear() : 'Unknown';
+      
+      item.innerHTML = `
+        ${posterHtml}
+        <div class="tmdb-result-info">
+          <span class="tmdb-result-title">${show.name}</span>
+          <span class="tmdb-result-date">First Aired: ${firstAirYear}</span>
+          <p class="tmdb-result-overview">${show.overview || 'No description available.'}</p>
+        </div>
+      `;
+      
+      item.addEventListener('click', async () => {
+        showLoader('Linking TV show and loading metadata...');
+        el.tmdbModal.classList.add('hidden');
+        try {
+          const metadata = await window.api.linkTmdbId({
+            folderPath: state.activeFolderPath,
+            showId: show.id
+          });
+          state.showMetadata = metadata;
+          renderDashboard();
+          showToast(`Successfully linked to: ${show.name}!`, 'success');
+        } catch (err) {
+          console.error(err);
+          showToast('Failed to link show: ' + err.message, 'error');
+        } finally {
+          hideLoader();
+        }
+      });
+      
+      el.tmdbSearchResults.appendChild(item);
+    });
+  } catch (err) {
+    console.error(err);
+    el.tmdbSearchResults.innerHTML = `<div style="text-align: center; color: var(--danger-color); padding: 20px;">Search failed: ${err.message}</div>`;
   }
 }
 

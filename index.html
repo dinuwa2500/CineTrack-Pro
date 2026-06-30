@@ -65,23 +65,35 @@
       <!-- Main Dashboard View -->
       <div id="dashboard-view" class="dashboard-container hidden">
         <!-- Stats Summary Banner -->
-        <section class="stats-banner">
-          <div class="stats-text-block">
-            <h1 id="tv-show-title" class="tv-title">TV Series Name</h1>
-            <p id="tv-show-path" class="tv-path">c:/Path/To/TV/Show</p>
-            
-            <div class="stats-counters">
-              <div class="counter-item">
-                <span class="counter-value" id="stat-total-episodes">0</span>
-                <span class="counter-label">Episodes</span>
+        <section class="stats-banner" id="stats-banner-el">
+          <div class="stats-banner-overlay"></div>
+          <div class="stats-banner-content">
+            <div class="show-poster-container hidden" id="show-poster-container">
+              <img id="show-poster" src="" alt="Show Poster">
+            </div>
+            <div class="stats-text-block">
+              <div class="title-row" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <h1 id="tv-show-title" class="tv-title">TV Series Name</h1>
+                <button id="btn-link-tmdb" class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; font-size: 11px;">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                  Link TMDB
+                </button>
               </div>
-              <div class="counter-item">
-                <span class="counter-value" id="stat-watched">0</span>
-                <span class="counter-label">Watched</span>
-              </div>
-              <div class="counter-item">
-                <span class="counter-value" id="stat-unwatched">0</span>
-                <span class="counter-label">Remaining</span>
+              <p id="tv-show-path" class="tv-path">c:/Path/To/TV/Show</p>
+              
+              <div class="stats-counters">
+                <div class="counter-item">
+                  <span class="counter-value" id="stat-total-episodes">0</span>
+                  <span class="counter-label">Episodes</span>
+                </div>
+                <div class="counter-item">
+                  <span class="counter-value" id="stat-watched">0</span>
+                  <span class="counter-label">Watched</span>
+                </div>
+                <div class="counter-item">
+                  <span class="counter-value" id="stat-unwatched">0</span>
+                  <span class="counter-label">Remaining</span>
+                </div>
               </div>
             </div>
           </div>
@@ -196,12 +208,54 @@
             </div>
           </div>
 
+          <hr class="divider">
+
+          <div class="settings-group">
+            <label class="settings-label">TMDB Metadata Enrichment</label>
+            <div class="input-tag-wrapper">
+              <input type="text" id="tmdb-api-key-input" placeholder="Leave blank to use pre-configured key..." style="width: 100%; max-width: 500px; background-color: hsla(217, 33%, 8%, 0.6); border: 1px solid var(--border-color); padding: 12px 16px; border-radius: var(--radius-md); font-size: 14px; color: var(--text-primary);">
+              <span class="input-tip">
+                CineTrack Pro ships with a pre-configured key that works out of the box. You only need to enter your own key here if you want to override it.
+                <a href="https://www.themoviedb.org/settings/api" target="_blank" style="color: var(--primary-color); text-decoration: none; margin-left: 4px;">Get a personal API key here</a>.
+              </span>
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <label class="settings-label">Anti-Spoiler Shield</label>
+            <label class="checkbox-container" style="font-size: 14px; padding-left: 28px; line-height: 1.4; margin-bottom: 0;">
+              <input type="checkbox" id="chk-anti-spoiler" checked>
+              <span class="checkmark" style="top: 0;"></span>
+              Enable Anti-Spoiler Shield (automatically blur episode thumbnails and hide episode descriptions for unwatched episodes)
+            </label>
+          </div>
+
           <div class="settings-footer">
             <button id="btn-save-settings" class="btn btn-primary">Save Configuration</button>
           </div>
         </div>
       </div>
     </main>
+  </div>
+
+  <!-- Link TMDB Modal -->
+  <div id="tmdb-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>Link TV Show to TMDB</h2>
+        <button id="btn-close-tmdb-modal" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-subtitle">Search and associate this folder with the correct TV series on TheMovieDB.</p>
+        <div class="modal-search-wrapper">
+          <input type="text" id="tmdb-search-input" placeholder="Search TV show name...">
+          <button id="btn-search-tmdb" class="btn btn-primary">Search</button>
+        </div>
+        <div id="tmdb-search-results" class="tmdb-results-list">
+          <!-- Dynamic results list -->
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Notification Toast -->

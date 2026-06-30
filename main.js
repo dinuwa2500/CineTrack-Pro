@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { exec, execFile } from 'child_process';
+import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,12 +16,28 @@ function readConfig() {
   try {
     if (fs.existsSync(CONFIG_FILE)) {
       const data = fs.readFileSync(CONFIG_FILE, 'utf-8');
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      return {
+        history: [],
+        defaultMode: 'db',
+        customTag: ' [Finished]',
+        tmdbApiKey: '',
+        antiSpoilerShield: true,
+        showLinkages: {},
+        ...parsed
+      };
     }
   } catch (error) {
     console.error('Error reading configuration:', error);
   }
-  return { history: [], defaultMode: 'db', customTag: ' [Finished]' };
+  return { 
+    history: [], 
+    defaultMode: 'db', 
+    customTag: ' [Finished]',
+    tmdbApiKey: '',
+    antiSpoilerShield: true,
+    showLinkages: {}
+  };
 }
 
 // Helper to write app configuration
@@ -459,3 +476,196 @@ ipcMain.handle('bulk-toggle-watched', async (event, { folderPath, episodes, watc
 
   return results;
 });
+
+// ==========================================================================
+// TMDB METADATA SCRAPING & CACHING INTEGRATION
+// ==========================================================================
+
+const DEFAULT_TMDB_API_KEY = '80512803b90f4886e85d68d1844b895e';
+
+const CACHE_DIR = path.join(app.getPath('userData'), 'metadata-cache');
+if (!fs.existsSync(CACHE_DIR)) {
+  fs.mkdirSync(CACHE_DIR, { recursive: true });
+}
+
+function getCacheFilename(folderPath) {
+  const hash = crypto.createHash('md5').update(folderPath).digest('hex');
+  return path.join(CACHE_DIR, `${hash}.json`);
+}
+
+function cleanShowName(folderPath) {
+  const folderName = path.basename(folderPath);
+  let cleanName = folderName
+    // Remove brackets and parentheses content
+    .replace(/\[.*?\]|\(.*?\)/g, '')
+    // Replace dots, underscores, dashes with space
+    .replace(/[\.\-_]/g, ' ')
+    // Remove resolution patterns like 1080p, 720p, 4k, 2160p, 480p, etc.
+    .replace(/\b\d{3,4}p\b/gi, '')
+    // Remove standard video codec/source keywords
+    .replace(/\b(x264|x265|h264|hevc|webrip|web-dl|bluray|brrip|hdtv|aac|dts|dd5\.1|ac3)\b/gi, '')
+    // Remove release groups, years or season markers
+    .replace(/\b(season\s*\d+|\bS\d{2}\b|S\d{1,2}|E\d{2})\b.*/gi, '')
+    // Strip trailing or double spaces
+    .replace(/\s+/g, ' ')
+    .trim();
+  
+  return cleanName || folderName;
+}
+
+async function fetchTMDB(endpoint, apiKey, queryParams = {}) {
+  const url = new URL(`https://api.themoviedb.org/3${endpoint}`);
+  url.searchParams.append('api_key', apiKey);
+  for (const [key, value] of Object.entries(queryParams)) {
+    url.searchParams.append(key, value);
+  }
+  
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    throw new Error(`TMDB API error: ${response.status} ${response.statusText}`);
+  }
+  return response.json();
+}
+
+async function scrapeShowDetails(showId, folderPath, apiKey) {
+  const showData = await fetchTMDB(`/tv/${showId}`, apiKey);
+  
+  const metadata = {
+    showId: showData.id,
+    showName: showData.name,
+    backdropPath: showData.backdrop_path,
+    posterPath: showData.poster_path,
+    seasons: {}
+  };
+  
+  if (showData.seasons && Array.isArray(showData.seasons)) {
+    // Only scrape seasons that have a valid season number
+    for (const s of showData.seasons) {
+      const sNum = s.season_number;
+      try {
+        const seasonData = await fetchTMDB(`/tv/${showId}/season/${sNum}`, apiKey);
+        const episodesMap = {};
+        
+        if (seasonData.episodes && Array.isArray(seasonData.episodes)) {
+          for (const ep of seasonData.episodes) {
+            const directors = ep.crew
+              ? ep.crew.filter(c => c.job === 'Director').map(c => c.name)
+              : [];
+            const guestStars = ep.guest_stars
+              ? ep.guest_stars.slice(0, 5).map(g => g.name)
+              : [];
+              
+            episodesMap[ep.episode_number] = {
+              name: ep.name,
+              overview: ep.overview,
+              stillPath: ep.still_path,
+              rating: ep.vote_average ? ep.vote_average.toFixed(1) : null,
+              directors: directors,
+              guestStars: guestStars
+            };
+          }
+        }
+        
+        metadata.seasons[sNum] = {
+          posterPath: seasonData.poster_path,
+          episodes: episodesMap
+        };
+      } catch (err) {
+        console.warn(`Failed to fetch TMDB details for Season ${sNum}:`, err.message);
+      }
+    }
+  }
+  
+  const cacheFile = getCacheFilename(folderPath);
+  fs.writeFileSync(cacheFile, JSON.stringify(metadata, null, 2), 'utf-8');
+  
+  return metadata;
+}
+
+// IPC Handlers for TMDB integration
+ipcMain.handle('fetch-show-metadata', async (event, { folderPath, forceRefresh = false }) => {
+  const config = readConfig();
+  const apiKey = config.tmdbApiKey || DEFAULT_TMDB_API_KEY;
+  
+  const cacheFile = getCacheFilename(folderPath);
+  if (!forceRefresh && fs.existsSync(cacheFile)) {
+    try {
+      const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf-8'));
+      return cached;
+    } catch (err) {
+      console.error('Failed to parse cached metadata, rescraping:', err);
+    }
+  }
+  
+  if (!apiKey) {
+    return null;
+  }
+  
+  let showId = config.showLinkages?.[folderPath];
+  if (!showId) {
+    // Try auto-matching
+    const cleanQuery = cleanShowName(folderPath);
+    try {
+      const searchResults = await fetchTMDB('/search/tv', apiKey, { query: cleanQuery });
+      if (searchResults.results && searchResults.results.length > 0) {
+        showId = searchResults.results[0].id;
+        
+        const updatedConfig = readConfig();
+        if (!updatedConfig.showLinkages) updatedConfig.showLinkages = {};
+        updatedConfig.showLinkages[folderPath] = showId;
+        writeConfig(updatedConfig);
+      }
+    } catch (err) {
+      console.error('Auto TMDB search failed:', err);
+      return null;
+    }
+  }
+  
+  if (!showId) {
+    return null;
+  }
+  
+  try {
+    return await scrapeShowDetails(showId, folderPath, apiKey);
+  } catch (err) {
+    console.error('Scrape show details failed:', err);
+    return null;
+  }
+});
+
+ipcMain.handle('search-tmdb', async (event, query) => {
+  const config = readConfig();
+  const apiKey = config.tmdbApiKey || DEFAULT_TMDB_API_KEY;
+  if (!apiKey) {
+    throw new Error('TMDB API Key is not set. Please add it in settings.');
+  }
+  
+  try {
+    const data = await fetchTMDB('/search/tv', apiKey, { query });
+    return data.results || [];
+  } catch (err) {
+    console.error('TMDB search error:', err);
+    throw err;
+  }
+});
+
+ipcMain.handle('link-tmdb-id', async (event, { folderPath, showId }) => {
+  const config = readConfig();
+  const apiKey = config.tmdbApiKey || DEFAULT_TMDB_API_KEY;
+  if (!apiKey) {
+    throw new Error('TMDB API Key is not set. Please add it in settings.');
+  }
+  
+  const updatedConfig = readConfig();
+  if (!updatedConfig.showLinkages) updatedConfig.showLinkages = {};
+  updatedConfig.showLinkages[folderPath] = parseInt(showId, 10);
+  writeConfig(updatedConfig);
+  
+  try {
+    return await scrapeShowDetails(showId, folderPath, apiKey);
+  } catch (err) {
+    console.error('Scrape show details after link failed:', err);
+    throw err;
+  }
+});
+
