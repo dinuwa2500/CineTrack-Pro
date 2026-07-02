@@ -392,7 +392,7 @@ button, input {
 }
 
 /* ==========================================================================
-   VIEW: DASHBOARD
+   VIEW: DASHBOARD (OPTIMIZED METADATA HEADER)
    ========================================================================== */
 .dashboard-container {
   flex-grow: 1;
@@ -404,28 +404,38 @@ button, input {
   animation: fadeIn 0.4s ease-out;
 }
 
-/* Stats Banner Backdrop & Poster Styling */
+/* ==========================================================================
+   VIEW: DASHBOARD (FIXED HEIGHT COMPRESSION & TEXT CLIPPING)
+   ========================================================================== */
 .stats-banner {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(135deg, hsla(222, 47%, 10%, 0.7) 0%, hsla(222, 47%, 6%, 0.85) 100%);
-  backdrop-filter: var(--glass-blur);
+  background-color: hsl(222, 47%, 4%);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-lg);
-  padding: 38px 46px;
+  padding: 32px 40px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow: var(--card-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   z-index: 1;
-  transition: border-color 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  
+  /* 
+     CHANGED FROM: (Default flex behavior allowing container collapse)
+     CHANGED TO: Explicit structural constraints that guarantee content visibility
+  */
+  flex-shrink: 0;       /* Prevents the parent flex container from squishing the header */
+  min-height: 220px;    /* Ensures a safe container area for the poster, text, and counters */
+  
+  transition: border-color 0.4s ease, box-shadow 0.4s ease;
 }
 
 .stats-banner:hover {
-  border-color: rgba(99, 102, 241, 0.25);
-  box-shadow: 0 12px 40px rgba(99, 102, 241, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  border-color: hsla(250, 84%, 67%, 0.3);
+  box-shadow: 0 12px 40px rgba(99, 102, 241, 0.12);
 }
 
+/* Anti-spoiler/contrast background protection layer */
 .stats-banner-overlay {
   position: absolute;
   top: 0;
@@ -434,42 +444,62 @@ button, input {
   bottom: 0;
   background-size: cover;
   background-position: center 20%;
-  filter: blur(25px) brightness(0.22);
+  filter: blur(8px) brightness(0.3);
   opacity: 0;
-  transition: opacity 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 1s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: -2;
+}
+
+/* Dark layout protection shroud overlay */
+.stats-banner::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, 
+    rgba(4, 7, 13, 1) 0%, 
+    rgba(4, 7, 13, 0.95) 35%, 
+    rgba(4, 7, 13, 0.4) 100__
+  );
+  background: linear-gradient(90deg, #04070d 0%, rgba(4, 7, 13, 0.95) 45%, rgba(4, 7, 13, 0.4) 100%);
   z-index: -1;
+  pointer-events: none;
 }
 
 .stats-banner-content {
   display: flex;
-  gap: 28px;
+  gap: 32px;
   align-items: center;
   z-index: 2;
+  flex: 1;
+  min-width: 0; /* Critical layout constraint rules out container clipping */
 }
 
+/* Poster Graphic Framing */
 .show-poster-container {
-  width: 120px;
-  height: 180px;
+  width: 110px;
+  height: 160px;
   border-radius: var(--radius-md);
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.6);
   flex-shrink: 0;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0.06) 100%);
+  background: hsla(222, 47%, 4%, 0.8);
   position: relative;
-  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .show-poster-container:hover {
-  transform: translateY(-2px) scale(1.02);
-  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-4px);
+  border-color: rgba(255, 255, 255, 0.25);
 }
 
 .show-poster-container img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  animation: fadeIn 0.5s ease-out;
 }
 
 .poster-placeholder {
@@ -481,33 +511,15 @@ button, input {
   height: 100%;
   gap: 10px;
   color: var(--text-muted);
-  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.04) 0%, rgba(0, 0, 0, 0) 70%);
 }
 
-.poster-placeholder svg {
-  color: var(--text-muted);
-  opacity: 0.6;
-  filter: drop-shadow(0 4px 10px rgba(0,0,0,0.3));
-  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), color 0.4s;
-}
-
-.show-poster-container:hover .poster-placeholder svg {
-  transform: scale(1.1);
-  color: var(--text-secondary);
-}
-
-.poster-placeholder span {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  font-weight: 600;
-  opacity: 0.8;
-}
-
+/* Details Typography Stack */
 .stats-text-block {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
 }
 
 .stats-banner-badge {
@@ -521,31 +533,35 @@ button, input {
   border-radius: 50px;
   border: 1px solid hsla(250, 84%, 63%, 0.25);
   align-self: flex-start;
-  margin-bottom: 8px;
-  display: inline-block;
   box-shadow: 0 2px 8px rgba(99, 102, 241, 0.1);
 }
 
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
 .tv-title {
-  font-size: 38px;
+  font-size: 32px;
   font-weight: 800;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.02em;
   color: #ffffff;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
   line-height: 1.2;
 }
 
+/* System Isolation Path Pill */
 .tv-path {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-family: 'Outfit', monospace;
-  margin-bottom: 16px;
-  background: rgba(255, 255, 255, 0.03);
-  padding: 4px 10px;
-  border-radius: 6px;
-  border: 1.5px solid rgba(255, 255, 255, 0.02);
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-family: inherit;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   align-self: flex-start;
-  max-width: 480px;
+  max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -562,65 +578,69 @@ button, input {
   box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
 }
 
+/* Horizontal Metric Layout Rows */
 .stats-counters {
   display: flex;
-  gap: 16px;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 4px;
 }
 
 .counter-item {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  background: rgba(15, 23, 42, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: var(--radius-md);
-  padding: 10px 20px;
-  min-width: 105px;
+  align-items: center;
+  gap: 12px;
+  background: rgba(15, 23, 42, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-sm);
+  padding: 8px 16px;
   transition: var(--transition-smooth);
 }
 
 .counter-item:hover {
-  background: rgba(99, 102, 241, 0.08);
-  border-color: rgba(99, 102, 241, 0.3);
-  transform: translateY(-2px);
+  background: rgba(99, 102, 241, 0.06);
+  border-color: rgba(99, 102, 241, 0.25);
 }
 
 .counter-value {
-  font-size: 26px;
+  font-size: 20px;
   font-weight: 700;
   color: var(--text-primary);
-  line-height: 1.15;
+  line-height: 1;
 }
 
 .counter-label {
   font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.75px;
+  letter-spacing: 0.05em;
   font-weight: 600;
   color: var(--text-muted);
-  margin-top: 2px;
 }
 
-/* Circular Progress */
+/* Circular Progress Wheel Sizing */
+.stats-progress-block {
+  position: relative;
+  z-index: 3;
+  margin-left: 24px;
+  flex-shrink: 0;
+}
+
 .progress-ring-container {
   position: relative;
-  width: 120px;
-  height: 120px;
-  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  width: 110px;
+  height: 110px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.3s ease;
 }
 
 .progress-ring-container:hover {
-  transform: scale(1.05);
+  transform: scale(1.04);
 }
 
 .progress-ring {
   transform: rotate(-90deg);
-  filter: drop-shadow(0 0 12px rgba(99, 102, 241, 0.15));
-  transition: filter 0.4s;
-}
-
-.progress-ring-container:hover .progress-ring {
-  filter: drop-shadow(0 0 16px rgba(99, 102, 241, 0.3));
 }
 
 .progress-ring-fill {
@@ -629,34 +649,31 @@ button, input {
 
 .progress-ring-text {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
 }
 
 #stat-percent {
   font-size: 24px;
   font-weight: 800;
-  background: linear-gradient(135deg, #ffffff 30%, #a5b4fc 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: #ffffff;
   line-height: 1;
 }
 
 .progress-sub {
   font-size: 9px;
   text-transform: uppercase;
-  color: var(--primary-color);
-  letter-spacing: 1px;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
   font-weight: 700;
-  margin-top: 2px;
-  opacity: 0.85;
+  margin-top: 4px;
 }
 
-/* Filters & Search Control Bar */
+/* ==========================================================================
+   FILTERS & SEARCH CONTROL BAR
+   ========================================================================== */
 .filter-bar {
   display: flex;
   justify-content: space-between;
@@ -1591,10 +1608,6 @@ button, input {
   white-space: nowrap;
 }
 
-.title-row {
-  margin-bottom: 4px;
-}
-
 /* Metadata warning banner in dashboard */
 .metadata-warning-banner {
   display: flex;
@@ -1703,4 +1716,3 @@ button, input {
   from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
 }
-
