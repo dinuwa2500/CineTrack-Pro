@@ -483,8 +483,41 @@ function renderRecentFolders() {
   state.history.forEach(folderPath => {
     const li = document.createElement('li');
     li.className = 'recent-item';
-    li.textContent = pathBasename(folderPath);
     li.title = folderPath;
+    
+    // Add folder name span
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'recent-name';
+    nameSpan.textContent = pathBasename(folderPath);
+    li.appendChild(nameSpan);
+    
+    // Add delete button
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'btn-delete-recent';
+    deleteBtn.title = 'Remove from recent folders';
+    deleteBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    `;
+    
+    deleteBtn.addEventListener('click', async (e) => {
+      e.stopPropagation(); // Prevent loading the folder
+      try {
+        const newHistory = state.history.filter(p => p !== folderPath);
+        await window.api.saveAppConfig({ history: newHistory });
+        state.history = newHistory;
+        renderRecentFolders();
+        showToast('Folder removed from history', 'success');
+      } catch (err) {
+        console.error('Failed to remove folder from history:', err);
+        showToast('Error removing folder', 'error');
+      }
+    });
+    
+    li.appendChild(deleteBtn);
+
     li.addEventListener('click', () => {
       el.folderPathInput.value = folderPath;
       scanFolder(folderPath);
