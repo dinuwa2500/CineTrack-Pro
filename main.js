@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, screen } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -52,11 +52,35 @@ function writeConfig(config) {
 }
 
 function createWindow() {
+  const config = readConfig();
+  const width = config.windowWidth || 1100;
+  const height = config.windowHeight || 800;
+  
+  let x = config.windowX;
+  let y = config.windowY;
+  if (x !== undefined && y !== undefined) {
+    const rect = { x, y, width, height };
+    const display = screen.getDisplayMatching(rect);
+    const displayBounds = display.bounds;
+    const isVisible = (
+      x >= displayBounds.x &&
+      x < displayBounds.x + displayBounds.width &&
+      y >= displayBounds.y &&
+      y < displayBounds.y + displayBounds.height
+    );
+    if (!isVisible) {
+      x = undefined;
+      y = undefined;
+    }
+  }
+
   mainWindow = new BrowserWindow({
     title: 'CineTrack Pro',
     icon: path.join(__dirname, 'assets', 'icon.png'),
-    width: 1100,
-    height: 800,
+    width: width,
+    height: height,
+    x: x,
+    y: y,
     minWidth: 800,
     minHeight: 600,
     frame: true,
@@ -69,8 +93,32 @@ function createWindow() {
     },
   });
 
+  if (config.windowMaximized) {
+    mainWindow.maximize();
+  }
+
   mainWindow.loadFile('index.html');
   // mainWindow.webContents.openDevTools(); // Uncomment for debugging
+
+  // Save window bounds and maximized state on close
+  mainWindow.on('close', () => {
+    const isMaximized = mainWindow.isMaximized();
+    const isMinimized = mainWindow.isMinimized();
+    
+    // Only update if it is not minimized
+    if (!isMinimized) {
+      const configToUpdate = readConfig();
+      configToUpdate.windowMaximized = isMaximized;
+      if (!isMaximized) {
+        const bounds = mainWindow.getBounds();
+        configToUpdate.windowWidth = bounds.width;
+        configToUpdate.windowHeight = bounds.height;
+        configToUpdate.windowX = bounds.x;
+        configToUpdate.windowY = bounds.y;
+      }
+      writeConfig(configToUpdate);
+    }
+  });
 }
 
 app.whenReady().then(() => {
