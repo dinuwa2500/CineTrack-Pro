@@ -535,15 +535,18 @@ function renderDashboard() {
   el.tvShowPath.textContent = state.activeFolderPath;
 
   // Show poster & backdrop integration
+  const placeholderEl = document.getElementById('poster-placeholder');
   if (state.showMetadata) {
     if (state.showMetadata.posterPath) {
       el.showPoster.src = state.showMetadata.posterPath.startsWith('http')
         ? state.showMetadata.posterPath
         : `https://image.tmdb.org/t/p/w185${state.showMetadata.posterPath}`;
-      el.showPosterContainer.classList.remove('hidden');
+      el.showPoster.style.display = 'block';
+      if (placeholderEl) placeholderEl.style.display = 'none';
     } else {
       el.showPoster.src = '';
-      el.showPosterContainer.classList.add('hidden');
+      el.showPoster.style.display = 'none';
+      if (placeholderEl) placeholderEl.style.display = 'flex';
     }
 
     const overlay = el.statsBannerEl.querySelector('.stats-banner-overlay');
@@ -561,7 +564,8 @@ function renderDashboard() {
     }
   } else {
     el.showPoster.src = '';
-    el.showPosterContainer.classList.add('hidden');
+    el.showPoster.style.display = 'none';
+    if (placeholderEl) placeholderEl.style.display = 'flex';
     const overlay = el.statsBannerEl.querySelector('.stats-banner-overlay');
     if (overlay) {
       overlay.style.backgroundImage = 'none';
@@ -581,8 +585,8 @@ function renderDashboard() {
   el.statUnwatched.textContent = unwatchedCount;
   el.statPercent.textContent = `${percent}%`;
 
-  // Update SVG progress ring (circumference is 314.15)
-  const offset = 314.15 - (314.15 * percent) / 100;
+  // Update SVG progress ring (circumference is 339.29)
+  const offset = 339.29 - (339.29 * percent) / 100;
   el.progressRingFill.style.strokeDashoffset = offset;
 
   // Filter episodes

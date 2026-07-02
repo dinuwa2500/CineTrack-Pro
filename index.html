@@ -79,10 +79,24 @@
         <section class="stats-banner" id="stats-banner-el">
           <div class="stats-banner-overlay"></div>
           <div class="stats-banner-content">
-            <div class="show-poster-container hidden" id="show-poster-container">
-              <img id="show-poster" src="" alt="Show Poster">
+            <div class="show-poster-container" id="show-poster-container">
+              <div class="poster-placeholder" id="poster-placeholder">
+                <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+                  <line x1="7" y1="2" x2="7" y2="22"></line>
+                  <line x1="17" y1="2" x2="17" y2="22"></line>
+                  <line x1="2" y1="12" x2="22" y2="12"></line>
+                  <line x1="2" y1="7" x2="7" y2="7"></line>
+                  <line x1="2" y1="17" x2="7" y2="17"></line>
+                  <line x1="17" y1="17" x2="22" y2="17"></line>
+                  <line x1="17" y1="7" x2="22" y2="7"></line>
+                </svg>
+                <span>No Cover</span>
+              </div>
+              <img id="show-poster" src="" alt="Show Poster" style="display: none;">
             </div>
             <div class="stats-text-block">
+              <span class="stats-banner-badge">TV Series Profile</span>
               <div class="title-row" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
                 <h1 id="tv-show-title" class="tv-title">TV Series Name</h1>
                 <button id="btn-link-tmdb" class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; font-size: 11px;">
@@ -111,9 +125,15 @@
 
           <div class="stats-progress-block">
             <div class="progress-ring-container">
-              <svg class="progress-ring" width="120" height="120">
-                <circle class="progress-ring-bg" stroke="#1e293b" stroke-width="8" fill="transparent" r="50" cx="60" cy="60"/>
-                <circle class="progress-ring-fill" stroke="var(--primary-color)" stroke-width="8" stroke-dasharray="314.15" stroke-dashoffset="314.15" stroke-linecap="round" fill="transparent" r="50" cx="60" cy="60"/>
+              <svg class="progress-ring" width="130" height="130">
+                <defs>
+                  <linearGradient id="progress-gradient" x1="0%" y1="100%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="hsl(262, 83%, 58%)" />
+                    <stop offset="100%" stop-color="hsl(239, 84%, 67%)" />
+                  </linearGradient>
+                </defs>
+                <circle class="progress-ring-bg" stroke="rgba(255, 255, 255, 0.05)" stroke-width="9" fill="transparent" r="54" cx="65" cy="65"/>
+                <circle class="progress-ring-fill" stroke="url(#progress-gradient)" stroke-width="9" stroke-dasharray="339.29" stroke-dashoffset="339.29" stroke-linecap="round" fill="transparent" r="54" cx="65" cy="65"/>
               </svg>
               <div class="progress-ring-text">
                 <span id="stat-percent">0%</span>
